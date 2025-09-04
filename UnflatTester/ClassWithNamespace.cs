@@ -31,6 +31,8 @@ namespace UnflatTester
         public int Faf { get; set; }
 
         public DateTime DateProperty { get; set; }
+
+        public required ClassWithNamespace RequiredRecursive { get; set; }
     }
 
     [UnflatMarker]
@@ -44,6 +46,10 @@ namespace UnflatTester
 
         [FieldSource("bb")]
         public required bool RequiredBoolean { get; set; }
+
+        public required ClassWithNamespace RequiredRecursive { get; set; }
+
+        public ClassWithNamespace RequriedOptional { get; set; }
 
         public required InnerClass3 _3 { get; set; }
 

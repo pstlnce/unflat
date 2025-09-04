@@ -46,10 +46,18 @@ internal static class ParseTargetsScraper
             return default;
         }
 
+
+        var notNullable = target.ToDisplayString().TrimEnd('?');
+        var traversedTypes = new HashSet<string>()
+        {
+            notNullable
+        };
+
         var settables = GetSettables(target)
-            .ToSettablesSnapshots()
+            .ToSettablesSnapshots(traversedTypes)
             .ToArray();
 
+        // TODO: remove
         if (settables.Length == 0)
             return null;
 
@@ -64,13 +72,18 @@ internal static class ParseTargetsScraper
             type: typeSnapshot,
             settables: settables,
             matchingSettings: settings,
-            inner: SearchComplexTypes(target, settings)
+            inner: SearchComplexTypes(target, settings, traversedTypes)
         );
+
+        if(targetModel.Inner != null)
+        {
+            targetModel.Inner[notNullable] = targetModel;
+        }
 
         return targetModel;
     }
 
-    public static Dictionary<string, MatchingModel>? SearchComplexTypes(ITypeSymbol type, MatchingSettings settigns, int depth = 0, int maxDepth = 32)
+    public static Dictionary<string, MatchingModel>? SearchComplexTypes(ITypeSymbol type, MatchingSettings settigns, HashSet<string> traversedTypes, int depth = 0, int maxDepth = 32)
     {
         if (depth >= maxDepth)
         {
@@ -86,30 +99,46 @@ internal static class ParseTargetsScraper
 
         foreach (var complexType in complexTypes)
         {
+            var displayString = complexType.ToDisplayString();
+            var notNullable   = displayString.TrimEnd('?'); 
+
+            // we should already set SetToDefault of related settable to "true"
+            if(!traversedTypes.Add(notNullable))
+            {
+                continue;
+            }
+
             var namespaceSnap = new NamespaceSnapshot(name: complexType.Name,
                 display: complexType.ToDisplayString(),
                 isGlobal: complexType.ContainingNamespace.IsGlobalNamespace
             );
 
             var typeSnap = new TypeSnapshot(Name: complexType.Name,
-                DisplayString: complexType.ToDisplayString(),
+                DisplayString: displayString,
                 IsReference: complexType.IsReferenceType,
                 IsPrimitive: false,
                 Namespace: namespaceSnap
             );
 
             var innerSettables = GetSettables(complexType)
-                .ToSettablesSnapshots()
+                .ToSettablesSnapshots(traversedTypes)
                 .ToArray();
 
             var model = new MatchingModel(
                 type: typeSnap,
                 settables: innerSettables,
                 matchingSettings: settigns,
-                inner: SearchComplexTypes(complexType, settigns, depth + 1, maxDepth)
+                inner: SearchComplexTypes(complexType, settigns, traversedTypes, depth + 1, maxDepth)
             );
 
+            if (model.Inner != null)
+            {
+                model.Inner[notNullable] = model;
+            }
+
             (result ??= [])[typeSnap.DisplayString] = model;
+
+            traversedTypes.Remove(notNullable);
         }
 
         return result;
@@ -132,10 +161,10 @@ internal static class ParseTargetsScraper
         _ => false
     };
 
-    public static IEnumerable<Settable> ToSettablesSnapshots(this IEnumerable<ISymbol> members)
-        => members.Select(ToSettableSnapshot);
+    public static IEnumerable<Settable> ToSettablesSnapshots(this IEnumerable<ISymbol> members, HashSet<string> traversedTypes)
+        => members.Select((x, i) => ToSettableSnapshot(x, i, traversedTypes));
 
-    public static Settable ToSettableSnapshot(ISymbol member, int i)
+    public static Settable ToSettableSnapshot(ISymbol member, int i, HashSet<string> traversedTypes)
     {
         var field = member as IFieldSymbol;
 
@@ -157,9 +186,18 @@ internal static class ParseTargetsScraper
 
         var typeNamespace = type.ContainingNamespace;
 
-        var namespaceSnapshot = new NamespaceSnapshot(typeNamespace.Name, typeNamespace.ToDisplayString(), typeNamespace.IsGlobalNamespace);
-        var typeSnapshot = new TypeSnapshot(type.Name, type.ToDisplayString(), type.IsReferenceType, type.IsPrimitive(), namespaceSnapshot);
+        var isPrimitve = type.IsPrimitive();
+        var displayString = type.ToDisplayString();
+        var isRecursive = false;
 
-        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, i);
+        if (!isPrimitve && traversedTypes.Contains(displayString))
+        {
+            isRecursive = true;
+        }
+
+        var namespaceSnapshot = new NamespaceSnapshot(typeNamespace.Name, typeNamespace.ToDisplayString(), typeNamespace.IsGlobalNamespace);
+        var typeSnapshot = new TypeSnapshot(type.Name, displayString, type.IsReferenceType, isPrimitve, namespaceSnapshot);
+
+        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i);
     }
 }

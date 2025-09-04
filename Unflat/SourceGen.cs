@@ -14,7 +14,7 @@ internal sealed class SourceGen : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-#if false && DEBUG
+#if true && DEBUG
         Debugger.Launch();
 #endif
 
@@ -163,12 +163,13 @@ internal readonly struct Settable
     public readonly string Name;
     public readonly int DeclarationOrder;
     public readonly bool Required;
+    public readonly bool SetToDefault;
 
     public bool IsPrimitive => Type.IsPrimitive;
 
-    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, int declarationOrder)
-        => (Name, Type, FieldSource, DeclarationOrder, Required)
-        = (name, type, fieldSource, declarationOrder, required);
+    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, bool setToDefault, int declarationOrder)
+        => (Name, Type, FieldSource, DeclarationOrder, Required, SetToDefault)
+        = (name, type, fieldSource, declarationOrder, required, setToDefault);
 }
 
 internal readonly record struct TypeSnapshot(string Name, string DisplayString, bool IsReference, bool IsPrimitive, NamespaceSnapshot Namespace);

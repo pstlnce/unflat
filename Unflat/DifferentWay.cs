@@ -75,22 +75,40 @@ internal static class DifferentWay
         }
     }
 
-    private static ModelToParse Convert(MatchingModel model)
+    private static ModelToParse Convert(MatchingModel model, bool setToDefault = false)
     {
-        return new()
+        var result = new ModelToParse()
         {
             Type = new TypeToParse()
             {
                 DisplayName = model.Type.DisplayString,
             },
             Settables = model.Settables.Select(ParseSettable).ToList(),
-            ComplexSettables = model.Settables
-                .Where(x => !x.IsPrimitive)
+            ComplexSettables = setToDefault
+                ? []
+                : model.Settables
+                .Where(x => !x.IsPrimitive && !x.SetToDefault)
                 .ToDictionary(
                     ParseSettable,
-                    v => Convert(model.Inner![v.Type.DisplayString])
+                    v => Convert(model.Inner![v.Type.DisplayString], v.SetToDefault)
                 ),
         };
+
+        foreach (var item in model.Settables)
+        {
+            if (!item.SetToDefault) continue;
+
+            var settable = ParseSettable(item);
+
+            result.ComplexSettables[settable] = new ModelToParse()
+            {
+                ComplexSettables = [],
+                Settables = [],
+                Type = new TypeToParse() { DisplayName = item.Type.DisplayString },
+            };
+        }
+
+        return result;
     }
 
     private static SettableToParse ParseSettable(Settable settable)
@@ -102,6 +120,7 @@ internal static class DifferentWay
             IsRequired = settable.Required,
             Name = settable.Name,
             TypeDisplayName = settable.Type.DisplayString,
+            SetToDefault = settable.SetToDefault,
         };
     }
 
@@ -343,7 +362,8 @@ internal struct CrawlerSlice(
     int columnNameIndex,
     int columnNameLength,
     int accessIndex,
-    int accessLenth
+    int accessLenth,
+    bool setToDefault = false
 )
 {
     public SettableToParse ParentLink { get; set; } = default!;
@@ -377,8 +397,6 @@ internal struct CrawlerSlice(
     public int LastReqRecursiveChildIndex { get; set; } = -1;
     public int LastRecursiveChildIndex { get; set; } = -1;
 
-    public int ReqComplexCount { get; set; }
-
     public int FirstRequiredChildIndex { get; set; } = -1;
     public int RequiredChildCount { get; set; }
     public int RequiredRecursiveChildCount { get; set; }
@@ -390,6 +408,8 @@ internal struct CrawlerSlice(
     public int OptionalRecursiveChildCount { get; set; }
 
     public readonly int AllOptionalChildCount => OptionalChildCount + OptionalRecursiveChildCount;
+
+    public bool SetToDefault { get; set; } = setToDefault;
 }
 
 internal sealed class SettablesCollected(
@@ -443,7 +463,7 @@ internal static class SettableCrawlerEnumerator2
         var optionalComplex = EnumerateOptional(current.ComplexSettables);
 
         var isCurrentRequired = false;
-        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default! };
+        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default!, SetToDefault = false };
 
         var parentIndex     = -1;
         var defferedCount   = 0;
@@ -458,6 +478,7 @@ internal static class SettableCrawlerEnumerator2
 
         while(true)
         {
+
             var reqSimpleCount = 0;
             var simpleCount = 0;
 
@@ -538,7 +559,8 @@ internal static class SettableCrawlerEnumerator2
                 columnNameIndex: columnNameIndex,
                 columnNameLength: columnNameLength,
                 accessIndex: accessIndex,
-                accessLenth: accessLength
+                accessLenth: accessLength,
+                setToDefault: parentLink.SetToDefault
             )
             {
                 ParentIndex = parentIndex,
@@ -620,7 +642,6 @@ internal static class SettableCrawlerEnumerator2
                     traversedRequireds = false;
                     traverseDeffered = false;
 
-
                     deffered.Add(new() { Complex = optionalComplex, Index = slices.Count });
                 }
                 else if (
@@ -632,6 +653,12 @@ internal static class SettableCrawlerEnumerator2
                     Debug.Assert(traverseDeffered || !isCurrentRequired, "Only requrieds have deffereds");
 
                     var (link, next) = optionalComplex.Current;
+
+                    // optionals that need to be setted to default don't need it implicitly in code therefore it can be ignored
+                    if(link.SetToDefault)
+                    {
+                        continue;
+                    }
 
                     //undefferedCount += isCurrentRequired ? 1 : 0;
 
@@ -950,6 +977,22 @@ internal static class SettableCrawlerEnumerator2
             Debug.Assert(optionalChildCount == slice.OptionalChildCount);
         }
 
+        for(int i = 0; i < slices.Count; i++)
+        {
+            var slice = slices[i];
+
+            if(!slice.IsRequired)
+            {
+                Debug.Assert(!slice.SetToDefault, "Optional recursive settables shouldn't be encountered");
+            }
+
+            if (!slice.SetToDefault) continue;
+
+            var parentSlice = slices[slice.ParentIndex];
+            Debug.Assert(parentSlice.FirstRequiredChildIndex <= i && i <= parentSlice.LastReqRecursiveChildIndex, "loosing link to defaulted settable");
+            Debug.Assert(parentSlice.FirstChildIndex <= i, "loosing link to defaulted settable");
+        }
+
         /*
         var columnNamesSpan = columnNames.AsSpan();
         var accessSpan = access.AsSpan();
@@ -1176,7 +1219,8 @@ internal static class SettableCrawlerEnumerator2
         bool hasAnyRequired,
         Span<char> colstr,
         string typeName,
-        ReadOnlySpan<char> access
+        ReadOnlySpan<char> access,
+        bool setToDefault
     )
     {
         if(step.Depth == 0)
@@ -1202,7 +1246,15 @@ internal static class SettableCrawlerEnumerator2
         }
 
         w.Append(access);
-        w.Append($" = new ").Append(typeName.AsSpan().TrimEnd('?')).Append("()");
+
+        if(!setToDefault)
+        {
+            w.Append(" = new ").Append(typeName.AsSpan().TrimEnd('?')).Append("()");
+        }
+        else
+        {
+            w.Append(" = default");
+        }
 
         if (hasAnyRequired)
         {
@@ -1289,6 +1341,9 @@ internal static class SettableCrawlerEnumerator2
             // Object that is returned from parsing should be created anyway
             if (i == 0) goto AfterCheck;
 
+            // skipping default as they are already setted to default in object initialization
+            if (false && root.SetToDefault) continue;
+
             // required parts of this model should be already parsed by loop after label "AfterCheck"
             if (root.IsRequired) goto ParsingOptionals;
 
@@ -1335,13 +1390,6 @@ internal static class SettableCrawlerEnumerator2
             {
                 endOfIteration = i;
             }
-
-#if false && DEBUG
-            if("Optional_1".Equals(root.ParentLink?.Name))
-            {
-
-            }
-#endif
 
             for(var ch = i; ch <= endOfIteration; ++ch)
             {
@@ -1419,7 +1467,8 @@ internal static class SettableCrawlerEnumerator2
                     hasAnyRequired: root.AllRequiredSimpleCount > 0 || root.LastReqRecursiveChildIndex > 0,
                     colstr: colStr,
                     typeName: root.TypeDisplayName,
-                    access: accessPref
+                    access: accessPref,
+                    setToDefault: false
                 );
             }
 
@@ -1454,7 +1503,8 @@ internal static class SettableCrawlerEnumerator2
                     hasAnyRequired: reqChild.AllRequiredSimpleCount > 0 || reqChild.LastReqRecursiveChildIndex > 0,
                     colstr: colStr,
                     typeName: reqChild.TypeDisplayName,
-                    access: r == i ? accesses.Slice(root.AccessIndex, root.AccessLenth) : reqChild.ParentLink!.Name.AsSpan()
+                    access: r == i ? accesses.Slice(root.AccessIndex, root.AccessLenth) : reqChild.ParentLink!.Name.AsSpan(),
+                    setToDefault: reqChild.SetToDefault
                 );
             }
             
@@ -1828,6 +1878,7 @@ internal sealed class SettableToParse
     public required string Name { get; set; }
     public required string TypeDisplayName { get; set; }
     public required FieldsOrOrder FieldSource { get; set; }
+    public required bool SetToDefault { get; set; }
     public int OwnerIndex;
 }
 

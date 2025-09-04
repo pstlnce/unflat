@@ -84,7 +84,7 @@ public class Benchy
     public void MapDatareader_ViaDapper()
     {
         var dr = _dt.CreateDataReader();
-        var list = dr.Parse<TestClass>().ToList();
+        var list = dr.Parse<TestClass>().AsList();
     }
 
     [Benchmark]

@@ -1341,9 +1341,6 @@ internal static class SettableCrawlerEnumerator2
             // Object that is returned from parsing should be created anyway
             if (i == 0) goto AfterCheck;
 
-            // skipping default as they are already setted to default in object initialization
-            if (false && root.SetToDefault) continue;
-
             // required parts of this model should be already parsed by loop after label "AfterCheck"
             if (root.IsRequired) goto ParsingOptionals;
 

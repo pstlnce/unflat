@@ -1330,7 +1330,7 @@ public class BigModelBenchmark
     public object Dapper()
     {
         var dr = _source.CreateDataReader();
-        var list = dr.Parse<Person>().ToList();
+        var list = dr.Parse<Person>().AsList();
 
         return list;
     }

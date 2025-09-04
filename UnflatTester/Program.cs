@@ -10,6 +10,7 @@ BenchmarkRunner.Run<UnflatTester.BigModelBenchmark>();
 BenchmarkRunner.Run<UnflatTester.Benchy>();
 #elif true
 BenchmarkRunner.Run<UnflatTester.ParsingBenchmarks>();
+#elif false
 #endif
 
 return;

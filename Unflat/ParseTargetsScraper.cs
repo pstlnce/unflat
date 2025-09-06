@@ -46,7 +46,6 @@ internal static class ParseTargetsScraper
             return default;
         }
 
-
         var notNullable = target.ToDisplayString().TrimEnd('?');
         var traversedTypes = new HashSet<string>()
         {
@@ -177,6 +176,20 @@ internal static class ParseTargetsScraper
             && attribute.AttributeClass.Name == FieldSourceAttrubteGenerator.AttributeName
         );
 
+        var customParseAttribute = attributes.FirstOrDefault(attribute =>
+            attribute.AttributeClass?.Name == PerSettableParserAttribute.AttributeName
+            && attribute.AttributeClass.ContainingNamespace.Name == PerSettableParserAttribute.Namespace
+        );
+
+        var customParse = default(string);
+        
+        if(customParseAttribute?.ConstructorArguments is { Length: > 0 } customParseArgs
+            && customParseArgs[0].Value is string customParseFormat
+            && customParseFormat.Length > 0)
+        {
+            customParse = customParseFormat;
+        }
+
         var fieldSource = sourcedAttribute.ParseToFieldSource();
 
         if (fieldSource?.TryGetOrder(out var order) == true && order < 0)
@@ -198,6 +211,6 @@ internal static class ParseTargetsScraper
         var namespaceSnapshot = new NamespaceSnapshot(typeNamespace.Name, typeNamespace.ToDisplayString(), typeNamespace.IsGlobalNamespace);
         var typeSnapshot = new TypeSnapshot(type.Name, displayString, type.IsReferenceType, isPrimitve, namespaceSnapshot);
 
-        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i);
+        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i, customParseFormat: customParse);
     }
 }

@@ -28,8 +28,10 @@ public sealed class Mapper
 
     public string Name { get; set; }
 
+    [SettableParser("Convert.ToString({0})")]
     public string Description { get; set; }
 
+    [Unflat.SettableParser("Convert.ToDateTime({0})")]
     public DateTime Time { get; set; }
 }
 

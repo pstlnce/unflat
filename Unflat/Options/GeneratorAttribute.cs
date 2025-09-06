@@ -28,6 +28,8 @@ namespace {Namespace}
         public {MatchCaseGenerator.EnumName} {MatchCaseProperty} {{ get; set; }} = {MatchCaseGenerator.EnumName}.{DefaultCase.name};
     }}
 
+    {PerSettableParserAttribute.SourceCode}
+
     {FieldSourceAttrubteGenerator.SourceCode}
 
     {MatchCaseGenerator.MatchCaseEnum}
@@ -38,6 +40,28 @@ namespace {Namespace}
 
     {CustomParserAttribute.Source}
 }}";
+}
+
+internal sealed class PerSettableParserAttribute
+{
+    public const string AttributeName = "SettableParserAttribute";
+    public const string Namespace = UnflatMarkerAttributeGenerator.Namespace;
+
+    public const string SourceCode =
+$@"[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false)]
+    internal sealed class {AttributeName} : Attribute
+    {{
+        /// <summary>
+        /// <list type=""bullet"">
+        /// <item> {{0}} - reader[i] </item>
+        /// <item> {{1}} - i </item>
+        /// <item> i - related column index </item>
+        /// <item> reader - reader... </item>
+        /// </list>
+        /// </summary>
+        /// <param name=""callFormat""> an argument for string.Format(callFormat, ""reader[i]"", i) </param>
+        public {AttributeName}(string callFormat) {{}}
+    }}";
 }
 
 internal sealed class FieldSourceAttrubteGenerator

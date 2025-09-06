@@ -121,6 +121,7 @@ internal static class DifferentWay
             Name = settable.Name,
             TypeDisplayName = settable.Type.DisplayString,
             SetToDefault = settable.SetToDefault,
+            CustomParseFormat = settable.CustomParseFormat,
         };
     }
 
@@ -463,7 +464,7 @@ internal static class SettableCrawlerEnumerator2
         var optionalComplex = EnumerateOptional(current.ComplexSettables);
 
         var isCurrentRequired = false;
-        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default!, SetToDefault = false };
+        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default!, SetToDefault = false, CustomParseFormat = default };
 
         var parentIndex     = -1;
         var defferedCount   = 0;
@@ -1274,14 +1275,8 @@ internal static class SettableCrawlerEnumerator2
             var settable = settables[i];
             var settableName = settable.Name;
 
-            w.Append(settableName).Append(" = reader[");
-
-            w.Append(colstr);
-            w.Append("_");
-            w.Append(settableName);
-
-            w.Append("] is ").Append(settable.TypeDisplayName.AsSpan().TrimEnd('?'))
-                .Append(" p").Append(colstr).Append("_").Append(settable.Name).Append(" ? p").Append(colstr).Append("_").Append(settable.Name).Append(" : default");
+            w.Append(settableName).Append(" = ");
+            RenderCasting(w, settable, colstr);
         }
 
         if(current.ParentIndex >= 0 && current.LastReqRecursiveChildIndex < 0)
@@ -1312,6 +1307,30 @@ internal static class SettableCrawlerEnumerator2
 
         step.PreviousParentIndex = parentIndex;
         step.PreviousIsEmpty = !hasAnyRequired;
+    }
+
+    public static void RenderCasting(IndentStackWriter w, SettableToParse settable, Span<char> colstr)
+    {
+        var customParseFormat = settable.CustomParseFormat;
+        var settableName = settable.Name;
+
+        if(customParseFormat != null)
+        {
+            var column = Concat(colstr, '_', settable.Name.AsSpan());
+            var customParsing = string.Format(customParseFormat, $"reader[{column}]", column);
+            w.Append(customParsing);
+        }
+        else
+        {
+            w.Append("reader[");
+
+            w.Append(colstr);
+            w.Append("_");
+            w.Append(settableName);
+
+            w.Append("] is ").Append(settable.TypeDisplayName.AsSpan().TrimEnd('?'))
+                .Append(" p").Append(colstr).Append("_").Append(settable.Name).Append(" ? p").Append(colstr).Append("_").Append(settable.Name).Append(" : default");
+        }
     }
 
     public static void RenderParsing(SettablesCollected collected, IndentStackWriter w, CancellationToken token = default)
@@ -1524,11 +1543,12 @@ internal static class SettableCrawlerEnumerator2
 
                     w.Append("if(").Append(colStr).Append("_").Append(settable.Name).Append(" != -1)")
                     .Append("\n{\n\t")
-                        .Append(accessPref).Append(".").Append(settable.Name).Append(" = reader[")
-                        .Append(colStr).Append("_").Append(settable.Name).Append("] is ")
-                        .Append(settable.TypeDisplayName.AsSpan().TrimEnd('?'))
-                        .Append(" p").Append(colStr).Append("_").Append(settable.Name).Append(" ? p").Append(colStr).Append("_").Append(settable.Name).Append(" : default;")
-                    .Append("\n}");
+                        .Append(accessPref).Append(".").Append(settable.Name).Append(" = ");
+
+                    RenderCasting(w, settable, colStr);
+
+                    w.Append(";")
+                        .Append("\n}");
                 }
             }
 
@@ -1874,6 +1894,7 @@ internal sealed class SettableToParse
     public required bool IsComplex { get; set; }
     public required string Name { get; set; }
     public required string TypeDisplayName { get; set; }
+    public required string? CustomParseFormat { get; set; }
     public required FieldsOrOrder FieldSource { get; set; }
     public required bool SetToDefault { get; set; }
     public int OwnerIndex;

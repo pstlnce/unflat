@@ -1766,7 +1766,7 @@ internal static class SettableCrawlerEnumerator2
             {
                 var (variableName, caseValue) = group[i];
 
-                w.Append("\n\t\t\tif(").Append(variableName).Append(" != -1 && string.Equals(");
+                w.Append("\n\t\t\tif(").Append(variableName).Append(" == -1 && string.Equals(");
 
                 if (caseValue == null)
                 {

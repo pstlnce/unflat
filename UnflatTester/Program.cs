@@ -4,9 +4,9 @@ using System.Data;
 using System.Data.Common;
 using System.Text.Json;
 
-#if true
+#if false
 BenchmarkRunner.Run<UnflatTester.BigModelBenchmark>();
-#elif false
+#elif true
 BenchmarkRunner.Run<UnflatTester.Benchy>();
 #elif true
 BenchmarkRunner.Run<UnflatTester.ParsingBenchmarks>();
@@ -23,7 +23,7 @@ public sealed class Mapper
 {
     public static string[] _p;
 
-    [FieldSource([])]
+    [UnflatSource([])]
     public int Num1 { get; set; }
 
     public string Name { get; set; }

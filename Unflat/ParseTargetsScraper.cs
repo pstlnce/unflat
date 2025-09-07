@@ -5,6 +5,7 @@ using Microsoft.CodeAnalysis;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using System;
 
 namespace Unflat;
 
@@ -183,6 +184,19 @@ internal static class ParseTargetsScraper
             && attribute.AttributeClass.ContainingNamespace.Name == PerSettableParserAttribute.Namespace
         );
 
+        var columnPrefixAttribute = attributes.FirstOrDefault(attribute =>
+            attribute.AttributeClass?.Name == ColumnPrefixAttribute.Name
+            && attribute.AttributeClass.ContainingNamespace.Name == ColumnPrefixAttribute.Namespace
+        );
+
+        var columnPrefix = string.Empty;
+
+        if(columnPrefixAttribute is { ConstructorArguments: { Length: > 0 } ctorArgs }
+            && ctorArgs[0].Value is string columnPrefixArg)
+        {
+            columnPrefix = columnPrefixArg;
+        }
+
         var customParse = default(string);
         var settedPerSettableParser = false;
         
@@ -218,11 +232,21 @@ internal static class ParseTargetsScraper
             typeNamespace.Name,
             typeNamespace.ToDisplayString(),
             typeNamespace.IsGlobalNamespace,
-            typeNamespace.ConstituentNamespaces.ExtractNames()
+            Memory<string>.Empty //typeNamespace.ConstituentNamespaces.ExtractNames()
         );
 
         var typeSnapshot = new TypeSnapshot(type.Name, displayString, type.IsReferenceType, isPrimitve, namespaceSnapshot);
 
-        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i, customParseFormat: customParse, settedPerSettableParser: settedPerSettableParser);
+        return new Settable(
+            type: typeSnapshot,
+            name: member.Name,
+            fieldSource: fieldSource ?? new([member.Name]),
+            required: isRequired,
+            setToDefault: isRecursive,
+            declarationOrder: i,
+            customParseFormat: customParse,
+            settedPerSettableParser: settedPerSettableParser,
+            columnPrefix: columnPrefix
+        );
     }
 }

@@ -30,16 +30,34 @@ namespace {Namespace}
 
     {PerSettableParserAttribute.SourceCode}
 
+    {ColumnPrefixAttribute.Source}
+
     {FieldSourceAttrubteGenerator.SourceCode}
 
     {MatchCaseGenerator.MatchCaseEnum}
 
+    {CustomParserAttribute.Source}
+
     {NotEnoughReaderFieldsException.Source}
 
     {MissingRequiredFieldOrPropertyException.Source}
-
-    {CustomParserAttribute.Source}
 }}";
+}
+
+internal static class ColumnPrefixAttribute
+{
+    public const string FullName = Namespace + "." + Name;
+
+    public const string Namespace = UnflatMarkerAttributeGenerator.Namespace;
+
+    public const string Name = "UnflatPrefixAttribute";
+
+    public const string Source =
+    @$"[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMultiple = false)]
+    internal sealed class {Name} : Attribute
+    {{
+        public {Name}(string prefix) {{ }}
+    }}";
 }
 
 internal static class CustomParserAttribute
@@ -109,7 +127,7 @@ $@"[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property, AllowMult
 
 internal sealed class FieldSourceAttrubteGenerator
 {
-    public const string AttributeName = "FieldSourceAttribute";
+    public const string AttributeName = "UnflatSourceAttribute";
 
     public static readonly string SourceCode =
 $@"[AttributeUsage(AttributeTargets.Field | AttributeTargets.Property)]

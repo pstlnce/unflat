@@ -23,19 +23,17 @@ internal sealed class SourceGen : IIncrementalGenerator
             postInitContext.AddSource($"{UnflatMarkerAttributeGenerator.AttributeFullName}.g.cs", UnflatMarkerAttributeGenerator.MarkerAttributeSourceCode)
         );
 
-        var customParsers = context.SyntaxProvider.ForCustomParsers();
-
+        var customParsers  = context.SyntaxProvider.ForCustomParsers();
         var dbParseTargets = context.SyntaxProvider.ForParseTargets();
 
         var customParsersCollected = customParsers.Collect();
-        var dbParseCollected = dbParseTargets.Collect();
+        var dbParseCollected       = dbParseTargets.Collect();
 
         var collectionEpilogue = customParsersCollected.Combine(dbParseCollected);
 
         context.RegisterSourceOutput(collectionEpilogue, (context, items) =>
         {
             var parsers = items.Left.ToParsers(context);
-            //GenerateDataReaderParsers(context, items.Right, parsers);
 
             DifferentWay.GenerateDataReaderParsers(context, items.Right, parsers);
         });
@@ -163,6 +161,7 @@ internal readonly struct Settable
     public readonly FieldsOrOrder FieldSource;
     public readonly string Name;
     public readonly string? CustomParseFormat;
+    public readonly string ColumnPrefix;
     public readonly int DeclarationOrder;
     public readonly bool Required;
     public readonly bool SetToDefault;
@@ -170,9 +169,9 @@ internal readonly struct Settable
 
     public bool IsPrimitive => Type.IsPrimitive;
 
-    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, bool setToDefault, int declarationOrder, string? customParseFormat, bool settedPerSettableParser)
-        => (Name, Type, FieldSource, DeclarationOrder, Required, SetToDefault, CustomParseFormat, SettedPerSettableParser)
-        = (name, type, fieldSource, declarationOrder, required, setToDefault, customParseFormat, settedPerSettableParser);
+    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, bool setToDefault, int declarationOrder, string? customParseFormat, bool settedPerSettableParser, string columnPrefix)
+        => (Name, Type, FieldSource, DeclarationOrder, Required, SetToDefault, CustomParseFormat, SettedPerSettableParser, ColumnPrefix)
+        = (name, type, fieldSource, declarationOrder, required, setToDefault, customParseFormat, settedPerSettableParser, columnPrefix);
 }
 
 internal readonly record struct TypeSnapshot(string Name, string DisplayString, bool IsReference, bool IsPrimitive, NamespaceSnapshot Namespace);

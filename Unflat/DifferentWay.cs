@@ -126,6 +126,7 @@ internal static class DifferentWay
             SetToDefault = settable.SetToDefault,
             PerSettableCustomParseFormat = settable.CustomParseFormat,
             SettedPerSettableParser = settable.SettedPerSettableParser,
+            ColumnPrefix = settable.ColumnPrefix,
         };
     }
 
@@ -149,11 +150,6 @@ internal static class DifferentWay
 
     internal static void FindCustomParser(SettableToParse settable, Memory<string> namespaces, bool isInGlobalNamespace, CustomParsersMap customParsersMap, Dictionary<string, CustomParserMethod> cache)
     {
-        if(settable.TypeDisplayName == "int")
-        {
-
-        }
-
         if (settable.SettedPerSettableParser)
             return;
 
@@ -466,6 +462,8 @@ internal struct CrawlerSlice(
     int columnNameLength,
     int accessIndex,
     int accessLenth,
+    int prefixIndex,
+    int prefixLength,
     bool setToDefault = false
 )
 {
@@ -473,10 +471,13 @@ internal struct CrawlerSlice(
 
     public string TypeDisplayName { get; set; } = source.Type.DisplayName;
 
-    public int ColumnNameIndex = columnNameIndex;
+    public int ColumnNameIndex  = columnNameIndex;
     public int ColumnNameLength = columnNameLength;
     public int AccessIndex = accessIndex;
     public int AccessLenth = accessLenth;
+
+    public int PrefixIndex  = prefixIndex;
+    public int PrefixLength = prefixLength;
 
     public int ParentIndex { get; set; } = -1;
     public bool ParentIsRequired { get; set; }
@@ -520,13 +521,15 @@ internal sealed class SettablesCollected(
     Memory<SettableToParse> requiredPrimitives,
     Memory<SettableToParse> notRequiredPrimitives,
     Memory<char> columnNamesPrefixes,
-    Memory<char> accessPrefixes)
+    Memory<char> accessPrefixes,
+    Memory<char> columnSourcePrefixes)
 {
     public Memory<CrawlerSlice> Slices { get; set; } = slices;
     public Memory<SettableToParse> RequiredPrimitives { get; set; } = requiredPrimitives;
     public Memory<SettableToParse> OptionalPrimitives { get; set; } = notRequiredPrimitives;
     public Memory<char> ColumnNamesPrefixes { get; set; } = columnNamesPrefixes;
     public Memory<char> AccessPrefixes { get; set; } = accessPrefixes;
+    public Memory<char> ColumnSourcePrefixes { get; set; } = columnSourcePrefixes;
 }
 
 internal static class SettableCrawlerEnumerator2
@@ -553,9 +556,11 @@ internal static class SettableCrawlerEnumerator2
 
         var columnNameStack = new StringBuilder(256);
         var accessStack     = new StringBuilder(256);
+        var prefixStack     = new StringBuilder(256);
 
         var columnNames = new List<char>(2048);
         var access      = new List<char>(1024);
+        var prefixes    = new List<char>(1024);
 
         var allRequiredSimple    = new List<SettableToParse>();
         var allNotRequiredSimple = new List<SettableToParse>();
@@ -581,6 +586,9 @@ internal static class SettableCrawlerEnumerator2
 
         while(true)
         {
+            if(parentLink.Name == "_3")
+            {
+            }
 
             var reqSimpleCount = 0;
             var simpleCount = 0;
@@ -652,6 +660,9 @@ internal static class SettableCrawlerEnumerator2
                 accessLength += Append(access, parentLink.Name);
             }
 
+            var prefixIndex  = prefixes.Count;
+            var prefixLength = Append(prefixes, prefixStack);
+            prefixLength += Append(prefixes, parentLink.ColumnPrefix);
 
             slices.Add(new(
                 source: current,
@@ -663,6 +674,8 @@ internal static class SettableCrawlerEnumerator2
                 columnNameLength: columnNameLength,
                 accessIndex: accessIndex,
                 accessLenth: accessLength,
+                prefixIndex: prefixIndex,
+                prefixLength: prefixLength,
                 setToDefault: parentLink.SetToDefault
             )
             {
@@ -709,6 +722,8 @@ internal static class SettableCrawlerEnumerator2
                         }
 
                         accessStack.Append(parentLink.Name);
+
+                        prefixStack.Append(parentLink.ColumnPrefix);
                     }
 
                     path.Push(new(
@@ -783,6 +798,8 @@ internal static class SettableCrawlerEnumerator2
                         }
 
                         accessStack.Append(parentLink.Name);
+
+                        prefixStack.Append(parentLink.ColumnPrefix);
                     }
 
                     path.Push(new(
@@ -865,6 +882,7 @@ internal static class SettableCrawlerEnumerator2
 
                         Remove(columnNameStack, parentLink.Name.Length, "__".Length);
                         Remove(accessStack, parentLink.Name.Length, ".".Length);
+                        Remove(prefixStack, parentLink.ColumnPrefix.Length, separatorLength: 0);
 
                         continue;
                     }
@@ -906,6 +924,8 @@ internal static class SettableCrawlerEnumerator2
                         }
 
                         accessStack.Append(parentLink.Name);
+
+                        prefixStack.Append(parentLink.ColumnPrefix);
                     }
 
                     path.Push(new(
@@ -1026,6 +1046,7 @@ internal static class SettableCrawlerEnumerator2
 
                     Remove(columnNameStack, parentLink.Name.Length, "__".Length);
                     Remove(accessStack, parentLink.Name.Length, ".".Length);
+                    Remove(prefixStack, parentLink.ColumnPrefix.Length, separatorLength: 0);
 
                     continue;
                 }
@@ -1117,7 +1138,8 @@ internal static class SettableCrawlerEnumerator2
             requiredPrimitives: allRequiredSimple.AsMemory(),
             notRequiredPrimitives: allNotRequiredSimple.AsMemory(),
             columnNamesPrefixes: columnNames.AsMemory(),
-            accessPrefixes: access.AsMemory()
+            accessPrefixes: access.AsMemory(),
+            columnSourcePrefixes: prefixes.AsMemory()
         );
     }
 
@@ -1142,7 +1164,7 @@ internal static class SettableCrawlerEnumerator2
         var end = sb.Length - wordSize;
 
         wordSize += end != 0 ? separatorLength : 0;
-        end -= end != 0 ? "__".Length : 0;
+        end -= end != 0 ? separatorLength : 0;
 
         sb.Remove(end, wordSize);
     }
@@ -1767,6 +1789,7 @@ internal static class SettableCrawlerEnumerator2
         var optionals = collected.OptionalPrimitives.Span;
         var slices    = collected.Slices.Span;
         var columnPrefixes = collected.ColumnNamesPrefixes.Span;
+        var sourcePrefixes = collected.ColumnSourcePrefixes.Span;
 
         var groups = new SortedDictionary<int, List<(string variableName, string source)>>();
 
@@ -1780,6 +1803,8 @@ internal static class SettableCrawlerEnumerator2
 
             var columnPrefix = columnPrefixes.Slice(slice.ColumnNameIndex, slice.ColumnNameLength);
 
+            var sourcePrefix = sourcePrefixes.Slice(slice.PrefixIndex, slice.PrefixLength);
+
             for (var requiredI = slice.RequiredSimpleIndex; requiredI < requiredEnd; requiredI++)
             {
                 var settable = required[requiredI];
@@ -1791,7 +1816,11 @@ internal static class SettableCrawlerEnumerator2
                 {
                     foreach (var sourceCase in sourceFields)
                     {
-                        set.Add(sourceCase);
+                        var sourceCase2 = sourcePrefix.Length > 0
+                            ? Concat(sourcePrefix, sourceCase.AsSpan())
+                            : sourceCase;
+
+                        set.Add(sourceCase2);
                     }
                 }
 
@@ -1952,6 +1981,19 @@ internal static class SettableCrawlerEnumerator2
         return result.ToString();
     }
 
+    public static string Concat(Span<char> left, ReadOnlySpan<char> right)
+    {
+        Span<char> result = stackalloc char[left.Length + right.Length];
+
+        left.CopyTo(result);
+
+        right.CopyTo(
+            result.Slice(left.Length, right.Length)
+        );
+
+        return result.ToString();
+    }
+
     public static void AppendColumnsSequential(SettablesCollected collected, ReadOnlySpan<char> prefix, ReadOnlySpan<char> postfix, IndentStackWriter w)
     {
         var required  = collected.RequiredPrimitives.Span;
@@ -2001,6 +2043,7 @@ internal sealed class SettableToParse
     public required string TypeDisplayName { get; set; }
     public required string? PerSettableCustomParseFormat { get; set; }
     public string? CustomParserFormat { get; set; }
+    public string ColumnPrefix { get; set; } = string.Empty;
     public required FieldsOrOrder FieldSource { get; set; }
     public required bool SetToDefault { get; set; }
     public bool SettedPerSettableParser { get; set; }

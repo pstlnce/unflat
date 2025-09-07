@@ -20,6 +20,15 @@ namespace UnflatTester
         public required int RequiredTest2 { get; set; }
 
         //public InnerClass Optional { get; set; }
+
+        [UnflatPrefix("class_4_")]
+        public InnerClass4 Class4 { get; set; }
+    }
+
+    internal class InnerClass4
+    {
+        [UnflatSource("20", "100")]
+        public required int _22;
     }
 
     internal class InnerClass
@@ -38,19 +47,20 @@ namespace UnflatTester
     [UnflatMarker]
     internal class ClassWithNamespace
     {
-        [FieldSource(0)]
+        [UnflatSource(0)]
         public string Property1 { get; set; }
 
-        [FieldSource(1)]
+        [UnflatSource(1)]
         public required string Property2 { get; set; }
 
-        [FieldSource("bb")]
+        [UnflatSource("bb")]
         public required bool RequiredBoolean { get; set; }
 
         public required ClassWithNamespace RequiredRecursive { get; set; }
 
         public ClassWithNamespace RequriedOptional { get; set; }
 
+        [UnflatPrefix("_3_")]
         public required InnerClass3 _3 { get; set; }
 
         public required InnerClass Inner { get; set; }

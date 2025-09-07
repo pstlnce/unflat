@@ -15,7 +15,8 @@ internal static class DifferentWay
 {
     internal static void GenerateDataReaderParsers(
         SourceProductionContext productionContext,
-        ImmutableArray<MatchingModel?> models)
+        ImmutableArray<MatchingModel?> models,
+        CustomParsersMap customParsersMap)
     {
         var token = productionContext.CancellationToken;
 
@@ -52,11 +53,11 @@ internal static class DifferentWay
 
                 {{wr.Scope[
                     typeNamespace == null
-                    ? AppendClass(wr, model.Value, matchCase)
+                    ? AppendClass(wr, model.Value, matchCase, customParsersMap)
                     : wr[$$""" 
                         namespace {{typeNamespace}}
                         {
-                            {{AppendClass(wr, model.Value, matchCase)}}
+                            {{AppendClass(wr, model.Value, matchCase, customParsersMap)}}
                         }
                         """
                     ]
@@ -79,6 +80,8 @@ internal static class DifferentWay
     {
         var result = new ModelToParse()
         {
+            Namespaces = model.Type.Namespace.Namespaces,
+            IsInGlobalNamespace = model.Type.Namespace.IsGlobal,
             Type = new TypeToParse()
             {
                 DisplayName = model.Type.DisplayString,
@@ -121,7 +124,8 @@ internal static class DifferentWay
             Name = settable.Name,
             TypeDisplayName = settable.Type.DisplayString,
             SetToDefault = settable.SetToDefault,
-            CustomParseFormat = settable.CustomParseFormat,
+            PerSettableCustomParseFormat = settable.CustomParseFormat,
+            SettedPerSettableParser = settable.SettedPerSettableParser,
         };
     }
 
@@ -131,14 +135,112 @@ internal static class DifferentWay
         return new(sb);
     }
 
-    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter _, MatchingModel model, MatchCase matchCase)
+    internal static void SetCustomParser(SettableToParse settable, CustomParserMethod parser)
+    {
+        settable.SettedCustomParser = true;
+        settable.CustomParserFormat = parser.CallFormat ?? $"{parser.Path}.{parser.Name}({{0}})";
+    }
+
+    internal static void SetCustomParserAndCache(SettableToParse settable, CustomParserMethod parser, Dictionary<string, CustomParserMethod> cache)
+    {
+        SetCustomParser(settable, parser);
+        cache[settable.TypeDisplayName] = parser;
+    }
+
+    internal static void FindCustomParser(SettableToParse settable, Memory<string> namespaces, bool isInGlobalNamespace, CustomParsersMap customParsersMap, Dictionary<string, CustomParserMethod> cache)
+    {
+        if(settable.TypeDisplayName == "int")
+        {
+
+        }
+
+        if (settable.SettedPerSettableParser)
+            return;
+
+        var type = settable.TypeDisplayName;
+
+        if(cache.TryGetValue(type, out var cachedParser))
+        {
+            SetCustomParser(settable, cachedParser);
+            return;
+        }
+
+        if(customParsersMap.ParsersMap.TryGetValue(type, out var parsers))
+        {
+            var parsersSpan     = parsers.Span;
+            var bestParser      = default(CustomParserMethod);
+            var segmentsMatched = 0;
+
+            for (var i = 0; i < parsersSpan.Length; i++)
+            {
+                var parser      = parsersSpan[i];
+                var segmentsLen = parser.Namespaces.Length;
+
+                if(isInGlobalNamespace && parser.IsInGlobalNamespace)
+                {
+                    SetCustomParserAndCache(settable, parser, cache);
+                    return;
+                }
+
+                if(segmentsLen > namespaces.Length) continue;
+
+                var matchedCount = 0;
+
+                var parserNamespaces = parser.Namespaces.Span;
+                var namespacesSpan   = namespaces.Span;
+
+                for (var segmentI = 0; segmentI < segmentsLen; segmentI++)
+                {
+                    if (parserNamespaces[segmentI] != namespacesSpan[segmentI])
+                    {
+                        break;
+                    }
+
+                    matchedCount += 1;
+                }
+
+                if(matchedCount > segmentsMatched)
+                {
+                    bestParser = parser;
+                    segmentsMatched = matchedCount;
+                }
+            }
+
+            if(segmentsMatched != 0)
+            {
+                SetCustomParserAndCache(settable, bestParser, cache);
+                return;
+            }
+        }
+
+        if(customParsersMap.DefaultParsers.TryGetValue(type, out var defaultParser))
+        {
+            SetCustomParserAndCache(settable, defaultParser, cache);
+        }
+    }
+
+    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter _, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap)
     {
         var type = model.Type.DisplayString;
 
         var sb = new StringBuilder();
-        var modelToParse = Convert(model);
+        ModelToParse modelToParse = Convert(model);
 
         var collected = SettableCrawlerEnumerator2.Collect(modelToParse);
+
+        var cache = new Dictionary<string, CustomParserMethod>();
+
+        var required = collected.RequiredPrimitives.Span;
+        for(var i = 0; i < required.Length; i++)
+        {
+            FindCustomParser(required[i], modelToParse.Namespaces, modelToParse.IsInGlobalNamespace, customParsersMap, cache);
+        }
+
+        var optional = collected.OptionalPrimitives.Span;
+        for (var i = 0; i < optional.Length; i++)
+        {
+            FindCustomParser(optional[i], modelToParse.Namespaces, modelToParse.IsInGlobalNamespace, customParsersMap, cache);
+        }
 
         var wr = ClearAndStartNew(sb);
         SettableCrawlerEnumerator2.RenderParsing(collected, wr);
@@ -464,7 +566,7 @@ internal static class SettableCrawlerEnumerator2
         var optionalComplex = EnumerateOptional(current.ComplexSettables);
 
         var isCurrentRequired = false;
-        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default!, SetToDefault = false, CustomParseFormat = default };
+        var parentLink = new SettableToParse() { FieldSource = default, IsComplex = true, IsRequired = false, Name = "", TypeDisplayName = default!, SetToDefault = false, PerSettableCustomParseFormat = default };
 
         var parentIndex     = -1;
         var defferedCount   = 0;
@@ -1311,13 +1413,19 @@ internal static class SettableCrawlerEnumerator2
 
     public static void RenderCasting(IndentStackWriter w, SettableToParse settable, Span<char> colstr)
     {
-        var customParseFormat = settable.CustomParseFormat;
+        var customParseFormat = settable.PerSettableCustomParseFormat;
         var settableName = settable.Name;
 
         if(customParseFormat != null)
         {
             var column = Concat(colstr, '_', settable.Name.AsSpan());
             var customParsing = string.Format(customParseFormat, $"reader[{column}]", column);
+            w.Append(customParsing);
+        }
+        else if(settable.SettedCustomParser)
+        {
+            var column = Concat(colstr, '_', settable.Name.AsSpan());
+            var customParsing = string.Format(settable.CustomParserFormat, $"reader[{column}]", column);
             w.Append(customParsing);
         }
         else
@@ -1346,11 +1454,6 @@ internal static class SettableCrawlerEnumerator2
         int depth = 0;
 
         ref var first = ref slices[0];
-
-        if(false && slices.Length > 100)
-        {
-            w.InternalStringBuilder.EnsureCapacity(180_000);
-        }
 
         // Main looping
         for (int i = 0; i < slices.Length && !token.IsCancellationRequested; i++)
@@ -1883,9 +1986,11 @@ internal static class SettableCrawlerEnumerator2
 
 internal sealed class ModelToParse
 {
+    public Memory<string> Namespaces { get; set; }
     public required TypeToParse Type { get; set; }
     public required IEnumerable<SettableToParse> Settables { get; set; }
     public required Dictionary<SettableToParse, ModelToParse> ComplexSettables { get; set; }
+    public bool IsInGlobalNamespace { get; set; }
 }
 
 internal sealed class SettableToParse
@@ -1894,9 +1999,12 @@ internal sealed class SettableToParse
     public required bool IsComplex { get; set; }
     public required string Name { get; set; }
     public required string TypeDisplayName { get; set; }
-    public required string? CustomParseFormat { get; set; }
+    public required string? PerSettableCustomParseFormat { get; set; }
+    public string? CustomParserFormat { get; set; }
     public required FieldsOrOrder FieldSource { get; set; }
     public required bool SetToDefault { get; set; }
+    public bool SettedPerSettableParser { get; set; }
+    public bool SettedCustomParser { get; set; }
     public int OwnerIndex;
 }
 

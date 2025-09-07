@@ -6,6 +6,7 @@ using System.Collections.Immutable;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Xml.Linq;
 
 namespace Unflat;
 
@@ -33,10 +34,10 @@ internal sealed class SourceGen : IIncrementalGenerator
 
         context.RegisterSourceOutput(collectionEpilogue, (context, items) =>
         {
-            //var parsers = items.Left.ToParsers(context);
+            var parsers = items.Left.ToParsers(context);
             //GenerateDataReaderParsers(context, items.Right, parsers);
 
-            DifferentWay.GenerateDataReaderParsers(context, items.Right);
+            DifferentWay.GenerateDataReaderParsers(context, items.Right, parsers);
         });
     }
 }
@@ -165,24 +166,26 @@ internal readonly struct Settable
     public readonly int DeclarationOrder;
     public readonly bool Required;
     public readonly bool SetToDefault;
+    public readonly bool SettedPerSettableParser;
 
     public bool IsPrimitive => Type.IsPrimitive;
 
-    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, bool setToDefault, int declarationOrder, string? customParseFormat)
-        => (Name, Type, FieldSource, DeclarationOrder, Required, SetToDefault, CustomParseFormat)
-        = (name, type, fieldSource, declarationOrder, required, setToDefault, customParseFormat);
+    public Settable(TypeSnapshot type, string name, FieldsOrOrder fieldSource, bool required, bool setToDefault, int declarationOrder, string? customParseFormat, bool settedPerSettableParser)
+        => (Name, Type, FieldSource, DeclarationOrder, Required, SetToDefault, CustomParseFormat, SettedPerSettableParser)
+        = (name, type, fieldSource, declarationOrder, required, setToDefault, customParseFormat, settedPerSettableParser);
 }
 
 internal readonly record struct TypeSnapshot(string Name, string DisplayString, bool IsReference, bool IsPrimitive, NamespaceSnapshot Namespace);
 
 internal readonly struct NamespaceSnapshot
 {
+    public readonly Memory<string> Namespaces;
     public readonly string Name;
     public readonly string DisplayString;
     public readonly bool IsGlobal;
 
-    public NamespaceSnapshot(string name, string display, bool isGlobal)
-        => (Name, DisplayString, IsGlobal) = (name, display, isGlobal);
+    public NamespaceSnapshot(string name, string display, bool isGlobal, Memory<string> namespaces)
+        => (Name, DisplayString, IsGlobal, Namespaces) = (name, display, isGlobal, namespaces);
 }
 
 internal readonly struct GenerationSettings

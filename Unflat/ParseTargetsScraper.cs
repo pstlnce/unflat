@@ -61,8 +61,9 @@ internal static class ParseTargetsScraper
             return null;
 
         var targetNamespace = target.ContainingNamespace;
+        var namespaces = target.ContainingNamespace.ConstituentNamespaces.ExtractNames();
 
-        var namespaceSnapshot = new NamespaceSnapshot(targetNamespace.Name, targetNamespace.ToDisplayString(), targetNamespace.IsGlobalNamespace);
+        var namespaceSnapshot = new NamespaceSnapshot(targetNamespace.Name, targetNamespace.ToDisplayString(), targetNamespace.IsGlobalNamespace, namespaces);
         var typeSnapshot = new TypeSnapshot(target.Name, target.ToDisplayString(), target.IsReferenceType, target.IsPrimitive(), namespaceSnapshot);
 
         var settings = new MatchingSettings(parser.MatchCasePropertyValue == null ? MatchCase.None : (MatchCase)parser.MatchCasePropertyValue);
@@ -109,7 +110,8 @@ internal static class ParseTargetsScraper
 
             var namespaceSnap = new NamespaceSnapshot(name: complexType.Name,
                 display: complexType.ToDisplayString(),
-                isGlobal: complexType.ContainingNamespace.IsGlobalNamespace
+                isGlobal: complexType.ContainingNamespace.IsGlobalNamespace,
+                namespaces: complexType.ContainingNamespace.ConstituentNamespaces.ExtractNames()
             );
 
             var typeSnap = new TypeSnapshot(Name: complexType.Name,
@@ -182,12 +184,16 @@ internal static class ParseTargetsScraper
         );
 
         var customParse = default(string);
+        var settedPerSettableParser = false;
         
-        if(customParseAttribute?.ConstructorArguments is { Length: > 0 } customParseArgs
-            && customParseArgs[0].Value is string customParseFormat
-            && customParseFormat.Length > 0)
+        if(customParseAttribute?.ConstructorArguments is { Length: > 0 } customParseArgs)
         {
-            customParse = customParseFormat;
+            settedPerSettableParser = true;
+            if (customParseArgs[0].Value is string customParseFormat
+                && customParseFormat.Length > 0)
+            {
+                customParse = customParseFormat;
+            }
         }
 
         var fieldSource = sourcedAttribute.ParseToFieldSource();
@@ -208,9 +214,15 @@ internal static class ParseTargetsScraper
             isRecursive = true;
         }
 
-        var namespaceSnapshot = new NamespaceSnapshot(typeNamespace.Name, typeNamespace.ToDisplayString(), typeNamespace.IsGlobalNamespace);
+        var namespaceSnapshot = new NamespaceSnapshot(
+            typeNamespace.Name,
+            typeNamespace.ToDisplayString(),
+            typeNamespace.IsGlobalNamespace,
+            typeNamespace.ConstituentNamespaces.ExtractNames()
+        );
+
         var typeSnapshot = new TypeSnapshot(type.Name, displayString, type.IsReferenceType, isPrimitve, namespaceSnapshot);
 
-        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i, customParseFormat: customParse);
+        return new Settable(typeSnapshot, member.Name, fieldSource ?? new([member.Name]), isRequired, setToDefault: isRecursive, i, customParseFormat: customParse, settedPerSettableParser: settedPerSettableParser);
     }
 }

@@ -33,6 +33,12 @@ public sealed class Mapper
 
     [Unflat.SettableParser("Convert.ToDateTime({0})")]
     public DateTime Time { get; set; }
+
+    [UnflatParser(IsDefault = false)]
+    public static int Parse(object v)
+    {
+        return 0;
+    }
 }
 
 [AttributeUsage(AttributeTargets.Class)]

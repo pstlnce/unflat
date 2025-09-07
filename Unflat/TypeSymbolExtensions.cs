@@ -1,5 +1,7 @@
 ﻿using Microsoft.CodeAnalysis;
 using System;
+using System.Collections.Generic;
+using System.Collections.Immutable;
 
 namespace Unflat;
 
@@ -31,9 +33,31 @@ internal static class TypeSymbolExtensions
 
         return typeSymbol.ContainingNamespace.Name == nameof(System) &&
             typeSymbol.Name is nameof(DateTimeOffset)
-            or nameof(DateTime)
             or nameof(TimeSpan)
             or "DateOnly"
             or "TimeOnly";
+    }
+
+    public static Memory<string> ExtractNames(this ImmutableArray<INamespaceSymbol> namespaces)
+    {
+        var namespacesArray = namespaces.Length > 0
+            ? new string[namespaces.Length]
+            : [];
+
+        for (var i = 0; i < namespaces.Length; i++)
+            namespacesArray[i] = namespaces[i].Name;
+
+        return namespacesArray;
+    }
+
+    public static KeyValuePair<string, TypedConstant>? Find(this ImmutableArray<KeyValuePair<string, TypedConstant>> arguments, string target)
+    {
+        for (var i = 0; i < arguments.Length; i++)
+        {
+            if (arguments[i].Key == target)
+                return arguments[i];
+        }
+
+        return null;
     }
 }

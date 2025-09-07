@@ -61,7 +61,7 @@ namespace UnflatTester
 
         public InnerClass2 OptionalWithZeroRequired { get; set; }
 
-        [Parser]
+        [UnflatParser]
         public static bool Parse(System.Object f)
         {
             return f switch

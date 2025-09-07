@@ -42,6 +42,49 @@ namespace {Namespace}
 }}";
 }
 
+internal static class CustomParserAttribute
+{
+    public const string FullName = Namespace + "." + Name;
+
+    public const string Namespace = UnflatMarkerAttributeGenerator.Namespace;
+    public const string Name = "UnflatParserAttribute";
+    public const string CallFormat = nameof(CallFormat);
+    public const string IsDefault = nameof(IsDefault);
+    public const string NamespaceScope = nameof(NamespaceScope);
+
+    public const string Source =
+    @$"[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+    internal sealed class {Name} : Attribute
+    {{
+        /// <summary>
+        /// <list type=""bullet"">
+        /// <item> {{0}} - reader[i] </item>
+        /// <item> {{1}} - i </item>
+        /// <item> i - related column index </item>
+        /// <item> reader - reader... </item>
+        /// </list>
+        /// </summary>
+        /// <param name=""callFormat""> an argument for string.Format(callFormat, ""reader[i]"", i) </param>
+        public string {CallFormat} {{ get; set; }}
+
+        /// <summary>
+        /// If true than this would be a fallback way
+        /// for parsing reader's column value to returning type
+        /// if not found parsers in closest namespaces
+        /// </summary>
+        public bool {IsDefault} {{ get; set; }}
+
+        /// <summary>
+        /// If set this value will replace the namespace that contains this parser.
+        /// Parser searcher will look to closest parser available to the model.
+        /// Parser in Test namespace, the target in Test.Test1 => matched.
+        /// Parser in Test.Test1.Test2, the target in Test.Test1 => not matched.
+        /// Parser in Test.Test1, the target in Test.Test2 => not matched, etc...
+        /// </summary>
+        public string {NamespaceScope} {{ get; set; }}
+    }}";
+}
+
 internal sealed class PerSettableParserAttribute
 {
     public const string AttributeName = "SettableParserAttribute";
@@ -103,21 +146,29 @@ internal static class MatchCaseGenerator
         .OrderBy(x => x)
         .ToArray();
 
+    public static int MaxLength = Math.Max(nameof(MatchCase.None).Length, CaseSettings.Max(x => x.ToString().Length));
+
     public static readonly string MatchCaseEnum =
 @$"[Flags]
     public enum {nameof(MatchCase)} : int
     {{
-        None = 0,
+        {Render(MatchCase.None, MaxLength)} = 0,
 {string.Join(
     "\n",
     CaseSettings.Select(x => (int)x == 1
-        ? $"        {x} = 1,"
-        : $"        {x} = 1 << {(int)Math.Log((int)x, 2)},"
+        ? $"        {Render(x, MaxLength)} = 1,"
+        : $"        {Render(x, MaxLength)} = 1 << {(int)Math.Log((int)x, 2)},"
     ).Concat([
         $"        {MatchCase.All} = {string.Join(" | ", CaseSettings.Select(x => x.ToString()))}"
     ])
 )}
     }}";
+
+    private static string Render(MatchCase x, int maxLength)
+    {
+        var xx = x.ToString();
+        return $"{xx}{new string(' ', maxLength - xx.Length)}";
+    }
 
     public static IEnumerable<string> ToAllCasesForCompare(this MatchCase cases, string value)
     {

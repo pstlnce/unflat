@@ -1,5 +1,7 @@
 # Unflat
 
+[![Unflat](https://img.shields.io/nuget/v/Unflat?style=flat-square)](https://www.nuget.org/packages/Unflat/)
+
 Unflat is an AOT ORM Сode generator for fast parsing DataReader into complex classes/structs with zero allocations
 
 ## How To Use

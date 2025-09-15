@@ -28,6 +28,8 @@ namespace {Namespace}
         public {MatchCaseGenerator.EnumName} {MatchCaseProperty} {{ get; set; }} = {MatchCaseGenerator.EnumName}.{DefaultCase.name};
     }}
 
+    {RunAttribute.Source}
+
     {PerSettableParserAttribute.SourceCode}
 
     {ColumnPrefixAttribute.Source}
@@ -42,6 +44,23 @@ namespace {Namespace}
 
     {MissingRequiredFieldOrPropertyException.Source}
 }}";
+}
+
+internal static class RunAttribute
+{
+    public const string FullName = Namespace + "." + Name;
+
+    public const string Name = "UnflatRunAttribute";
+
+    public const string Namespace = UnflatMarkerAttributeGenerator.Namespace;
+
+    public const string Source =
+    @$"[AttributeUsage(AttributeTargets.Method, AllowMultiple = false)]
+    internal sealed class {Name} : Attribute
+    {{
+        public {Name}(object method, params object[] args) {{}}
+    }}
+    ";
 }
 
 internal static class ColumnPrefixAttribute

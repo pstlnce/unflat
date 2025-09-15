@@ -15,7 +15,7 @@ internal sealed class SourceGen : IIncrementalGenerator
 {
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-#if false && DEBUG
+#if true && DEBUG
         Debugger.Launch();
 #endif
 

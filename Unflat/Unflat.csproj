@@ -3,26 +3,12 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
+	<!-- <GeneratePackageOnBuild>true</GeneratePackageOnBuild>  -->
     <Nullable>enable</Nullable>
 	<IncludeBuildOutput>false</IncludeBuildOutput>
 	<EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
 	<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
 	<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-
-	  <!-- Package settings -->
-	  <!--<PackageId>Unflat</PackageId>
-	  <Version>0.0.1</Version>
-	  <Authors>pstlnce</Authors>
-	  <Description>AOT ORM Сode generator for fast parsing DataReader into complex classes/structs with zero allocations</Description>
-	  <PackageTags>sourcegenerator;roslyn</PackageTags>
-	  --><!-- Generate package on build --><!--
-	  <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
-	  --><!-- Prevent the generator from being added as a library reference --><!--
-	  <IncludeBuildOutput>false</IncludeBuildOutput>
-	  --><!-- Optional: Include PDB in package --><!--
-	  <EmbedUntrackedSources>true</EmbedUntrackedSources>
-	  <AllowedOutputExtensionsInPackageBuildOutputFolder>$(AllowedOutputExtensionsInPackageBuildOutputFolder);.pdb</AllowedOutputExtensionsInPackageBuildOutputFolder>-->
-
   </PropertyGroup>
   
   <ItemGroup>
@@ -31,13 +17,6 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.12.0" PrivateAssets="all" />
-    <PackageReference Include="System.Reflection.Emit" Version="4.7.0" />
   </ItemGroup>
-
-	
-	
-  <!--<ItemGroup>
-	<None Include="$(OutputPath)\$(AssemblyName).dll" Pack="true" PackagePath="analyzers/dotnet/cs" Visible="false" />
-  </ItemGroup>-->
 
 </Project>

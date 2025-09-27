@@ -6,11 +6,6 @@ using System.Text.Json;
 using System.Text;
 using Bogus;
 
-if (default(Person) is { Address.City.Length: > 0 } s)
-{
-    Console.WriteLine(s);
-}
-
 #if false
 BenchmarkRunner.Run<UnflatTester.BigModelBenchmark>();
 #elif true
@@ -49,14 +44,18 @@ public sealed class Mapper
     [UnflatRun(1)]
     public static string CompileTimeCall()
     {
-        var sb = new StringBuilder(123);
+        var sb = new StringBuilder();
 
-        sb
-            //.Append(repeatCount: 1, value: '\n')
-            //.Append('-', 10)
-            //.Append('\n')
-            //.Append('-', 10)
-            .AppendFormat("Hello {0}!", new object[] { "Sailor!", "NotSailor", "Skip", "Params" });
+        var bb = new object[3] { 1, 2, 3 };
+        sb.AppendFormat("1: {0}", bb);
+        //sb.Append("1: ").Append(bb);
+
+        //sb
+        //.Append(repeatCount: 1, value: '\n')
+        //.Append('-', 10)
+        //.Append('\n')
+        //.Append('-', 10)
+        //.AppendFormat("Hello {0}!", new object[] { "Sailor!", "NotSailor", "Skip", "Params" });
 
         /*
         for (int i = 0; i <= 100; i++)

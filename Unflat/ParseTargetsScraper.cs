@@ -50,6 +50,7 @@ internal static class ParseTargetsScraper
         }
 
         var notNullable = target.ToDisplayString().TrimEnd('?');
+
         var traversedTypes = new HashSet<string>()
         {
             notNullable
@@ -145,7 +146,9 @@ internal static class ParseTargetsScraper
     }
 
     public static IEnumerable<ISymbol> GetSettables(this ITypeSymbol symbol)
-        => symbol.GetMembers().Where(IsSettable);
+    {
+        return symbol.EraseNullable().GetMembers().Where(IsSettable);
+    }
 
     public static bool IsSettable(this ISymbol symbol) => symbol switch
     {
@@ -248,74 +251,5 @@ internal static class ParseTargetsScraper
         );
     }
 }
-
-sealed class VariableLink
-{
-    public Type Type;
-    public LocalBuilder LocalBuilder;
-    public string Name;
-
-    public override string ToString()
-    {
-        return $"variable: {Name}. Type - {Type}";
-    }
-}
-
-sealed class VariablesScoper
-{
-    public List<VariableLink> AllVariables;
-
-    public VariablesScoper? Parent;
-    public Dictionary<string, VariableLink> VariableLinks = [];
-
-    public int TempVariables = 0;
-
-    public VariablesScoper NewScope()
-    {
-        return new()
-        {
-            AllVariables = AllVariables,
-            Parent = this,
-        };
-    }
-
-    public void AddTempLocal(VariableLink variable)
-    {
-        AllVariables.Add(variable);
-
-        variable.Name = $"temp variable #{TempVariables++}";
-    }
-
-    public void Set(string name, VariableLink variable)
-    {
-        VariableLinks.Add(name, variable);
-        AllVariables.Add(variable);
-
-        variable.Name = name;
-    }
-
-    public bool TryFind(string name, [NotNullWhen(true)] out VariableLink? variable)
-    {
-        if (VariableLinks.TryGetValue(name, out variable))
-        {
-            return true;
-        }
-
-        var parent = Parent;
-
-        while(parent != null)
-        {
-            if (parent.VariableLinks.TryGetValue(name, out variable))
-            {
-                return true;
-            }
-
-            parent = parent.Parent;
-        }
-
-        return false;
-    }
-}
-
 
 

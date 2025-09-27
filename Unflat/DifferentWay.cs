@@ -8,6 +8,8 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using System.Diagnostics.CodeAnalysis;
+using System.Xml.Linq;
 
 namespace Unflat;
 
@@ -76,8 +78,32 @@ internal static class DifferentWay
         }
     }
 
-    private static ModelToParse Convert(MatchingModel model, bool setToDefault = false)
+    private static ModelToParse Convert(
+        MatchingModel model,
+        Memory<string> namespaces,
+        bool isInGlobalNamespace,
+        CustomParsersMap customParsersMap, 
+        Dictionary<string, CustomParserMethod?> cache,
+        bool setToDefault = false)
     {
+        var settables = new List<SettableToParse>();
+
+        foreach(var settable in model.Settables)
+        {
+            if (!settable.IsPrimitive)
+                continue;
+            
+            var parsed = ParseSettable(settable);
+
+            if (FindCustomParser(settable, namespaces, isInGlobalNamespace, customParsersMap, cache, out var findedParseMethod))
+            {
+                parsed.SettedCustomParser = true;
+                parsed.CustomParserFormat = findedParseMethod.CallFormat ?? $"{findedParseMethod.Path}.{findedParseMethod.Name}({{0}})";
+            }
+
+            settables.Add(parsed);
+        }
+
         var result = new ModelToParse()
         {
             Namespaces = model.Type.Namespace.Namespaces,
@@ -86,29 +112,55 @@ internal static class DifferentWay
             {
                 DisplayName = model.Type.DisplayString,
             },
-            Settables = model.Settables.Select(ParseSettable).ToList(),
-            ComplexSettables = setToDefault
-                ? []
-                : model.Settables
-                .Where(x => !x.IsPrimitive && !x.SetToDefault)
-                .ToDictionary(
-                    ParseSettable,
-                    v => Convert(model.Inner![v.Type.DisplayString], v.SetToDefault)
-                ),
+            Settables = settables,
+            ComplexSettables = [],
         };
 
-        foreach (var item in model.Settables)
+        if(setToDefault)
         {
-            if (!item.SetToDefault) continue;
+            return result;
+        }
 
-            var settable = ParseSettable(item);
+        // complex types with parser on them will be treated like primitives
+        foreach(var settable in model.Settables)
+        {
+            if (settable.IsPrimitive)
+                continue;
 
-            result.ComplexSettables[settable] = new ModelToParse()
+            var parsed = ParseSettable(settable);
+
+            if (settable.SetToDefault)
             {
-                ComplexSettables = [],
-                Settables = [],
-                Type = new TypeToParse() { DisplayName = item.Type.DisplayString },
-            };
+                result.ComplexSettables[parsed] = new ModelToParse()
+                {
+                    ComplexSettables = [],
+                    Settables = [],
+                    Type = new TypeToParse() { DisplayName = settable.Type.DisplayString },
+                };
+
+                continue;
+            }
+
+            settables.Add(parsed);
+
+            if(FindCustomParser(settable, namespaces, isInGlobalNamespace, customParsersMap, cache, out var findedParseMethod))
+            {
+                parsed.IsComplex = false;
+
+                parsed.SettedCustomParser = true;
+                parsed.CustomParserFormat = findedParseMethod.CallFormat ?? $"{findedParseMethod.Path}.{findedParseMethod.Name}({{0}})";
+
+                continue;
+            }
+
+            result.ComplexSettables[parsed] = Convert(
+                model.Inner![settable.Type.DisplayString],
+                namespaces,
+                isInGlobalNamespace,
+                customParsersMap,
+                cache,
+                setToDefault: settable.SetToDefault
+            );
         }
 
         return result;
@@ -215,17 +267,117 @@ internal static class DifferentWay
         }
     }
 
+    internal static bool FindCustomParser(
+        Settable settable,
+        Memory<string> namespaces,
+        bool isInGlobalNamespace,
+        CustomParsersMap customParsersMap,
+        Dictionary<string, CustomParserMethod?> cache,
+        [NotNullWhen(true)] out CustomParserMethod parserMethod
+    )
+    {
+        parserMethod = default;
+
+        if (settable.SettedPerSettableParser)
+            return false;
+
+        var type = settable.Type.DisplayString;
+
+        if (cache.TryGetValue(type, out var cachedParser))
+        {
+            if(cachedParser.HasValue)
+            {
+                parserMethod = cachedParser.Value;
+                return true;
+            }
+
+            return false;
+        }
+
+        if (customParsersMap.ParsersMap.TryGetValue(type, out var parsers))
+        {
+            var parsersSpan = parsers.Span;
+            var bestParser = default(CustomParserMethod);
+            var segmentsMatched = 0;
+
+            for (var i = 0; i < parsersSpan.Length; i++)
+            {
+                var parser = parsersSpan[i];
+                var segmentsLen = parser.Namespaces.Length;
+
+                if (isInGlobalNamespace && parser.IsInGlobalNamespace)
+                {
+                    parserMethod = parser;
+                    cache[type] = parser;
+
+                    return true;
+                }
+
+                if (segmentsLen > namespaces.Length) continue;
+
+                var matchedCount = 0;
+
+                var parserNamespaces = parser.Namespaces.Span;
+                var namespacesSpan = namespaces.Span;
+
+                for (var segmentI = 0; segmentI < segmentsLen; segmentI++)
+                {
+                    if (parserNamespaces[segmentI] != namespacesSpan[segmentI])
+                    {
+                        break;
+                    }
+
+                    matchedCount += 1;
+                }
+
+                if (matchedCount > segmentsMatched)
+                {
+                    bestParser = parser;
+                    segmentsMatched = matchedCount;
+                }
+            }
+
+            if (segmentsMatched != 0)
+            {
+                parserMethod = bestParser;
+                cache[type] = bestParser;
+
+                return true;
+            }
+        }
+
+        if (customParsersMap.DefaultParsers.TryGetValue(type, out var defaultParser))
+        {
+            parserMethod = defaultParser;
+            cache[type] = defaultParser;
+
+            return true;
+        }
+
+        cache[type] = null;
+        return false;
+    }
+
     internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter _, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap)
     {
         var type = model.Type.DisplayString;
 
         var sb = new StringBuilder();
-        ModelToParse modelToParse = Convert(model);
+
+        var namespaces = model.Type.Namespace.Namespaces;
+        var isInGlobalNamespace = model.Type.Namespace.IsGlobal;
+        var cache = new Dictionary<string, CustomParserMethod?>();
+
+        ModelToParse modelToParse = Convert(model,
+            namespaces,
+            isInGlobalNamespace,
+            customParsersMap,
+            cache
+        );
 
         var collected = SettableCrawlerEnumerator2.Collect(modelToParse);
 
-        var cache = new Dictionary<string, CustomParserMethod>();
-
+        /*
         var required = collected.RequiredPrimitives.Span;
         for(var i = 0; i < required.Length; i++)
         {
@@ -237,6 +389,7 @@ internal static class DifferentWay
         {
             FindCustomParser(optional[i], modelToParse.Namespaces, modelToParse.IsInGlobalNamespace, customParsersMap, cache);
         }
+        */
 
         var wr = ClearAndStartNew(sb);
         SettableCrawlerEnumerator2.RenderParsing(collected, wr);

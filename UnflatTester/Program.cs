@@ -25,6 +25,8 @@ public sealed class Mapper
 {
     public static string[] _p;
 
+    public int? NullableValueType { get; set; }
+
     [UnflatSource([])]
     public int Num1 { get; set; }
 
@@ -36,13 +38,22 @@ public sealed class Mapper
     [Unflat.SettableParser("Convert.ToDateTime({0})")]
     public DateTime Time { get; set; }
 
+    public Uri Uri { get; set; }
+
+    [Unflat.UnflatParser]
+    public static Uri ParseToUri(object value)
+    {
+        return new Uri(value as string);
+    }
+
     [UnflatParser(IsDefault = false)]
     public static int Parse(object v)
     {
         return 0;
     }
 
-    [UnflatRun(1)]
+
+    //[UnflatRun(1)]
     public static string CompileTimeCall()
     {
         var sb = new StringBuilder();

@@ -9,8 +9,21 @@ internal static class TypeSymbolExtensions
 {
     public static bool IsComplex(this ITypeSymbol typeSymbol) => !IsPrimitive(typeSymbol);
 
+    public static ITypeSymbol EraseNullable(this ITypeSymbol typeSymbol)
+    {
+        var specialType = typeSymbol.OriginalDefinition.SpecialType;
+        if (specialType == SpecialType.System_Nullable_T)
+        {
+            return ((INamedTypeSymbol)typeSymbol).TypeArguments[0];
+        }
+
+        return typeSymbol;
+    }
+
     public static bool IsPrimitive(this ITypeSymbol typeSymbol)
     {
+        typeSymbol = EraseNullable(typeSymbol);
+
         var specialSimple = typeSymbol.SpecialType
             is SpecialType.System_Object
             or SpecialType.System_Boolean

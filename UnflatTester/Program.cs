@@ -3,6 +3,8 @@ using BenchmarkDotNet.Running;
 using System.Data;
 using System.Data.Common;
 using System.Text.Json;
+using System.Text;
+using Bogus;
 
 #if false
 BenchmarkRunner.Run<UnflatTester.BigModelBenchmark>();
@@ -39,6 +41,48 @@ public sealed class Mapper
     {
         return 0;
     }
+
+    [UnflatRun(1)]
+    public static string CompileTimeCall()
+    {
+        var sb = new StringBuilder();
+
+        var bb = new object[3] { 1, 2, 3 };
+        sb.AppendFormat("1: {0}", bb);
+        //sb.Append("1: ").Append(bb);
+
+        //sb
+        //.Append(repeatCount: 1, value: '\n')
+        //.Append('-', 10)
+        //.Append('\n')
+        //.Append('-', 10)
+        //.AppendFormat("Hello {0}!", new object[] { "Sailor!", "NotSailor", "Skip", "Params" });
+
+        /*
+        for (int i = 0; i <= 100; i++)
+        {
+            if(i % 2 == 0)
+            {
+                sb.Append('\n').Append(i).Append(" - is even");
+            }
+            else
+            {
+                sb.Append('\n').Append(i).Append(" - is not even");
+            }
+        }
+        */
+
+        var result = sb.ToString();
+
+        return result;
+    }
+}
+
+public sealed class NestedClass
+{
+    public required DateTime Property1 { get; set; }
+    public required decimal Property2 { get; set; }
+    public int Property3 { get; set; }
 }
 
 [AttributeUsage(AttributeTargets.Class)]

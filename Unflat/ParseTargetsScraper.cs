@@ -153,16 +153,27 @@ internal static class ParseTargetsScraper
     public static bool IsSettable(this ISymbol symbol) => symbol switch
     {
         IPropertySymbol property
-            => property.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal },
+            => property.SetMethod is { DeclaredAccessibility: Accessibility.Public or Accessibility.Internal }
+            && !property.GetAttributes().Any(IsIgnored),
 
         IFieldSymbol field
             => !field.IsConst
             && !field.IsStatic
             && !field.IsReadOnly
-            && field.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal,
+            && field.DeclaredAccessibility is Accessibility.Public or Accessibility.Internal
+            && !field.GetAttributes().Any(IsIgnored),
 
         _ => false
     };
+
+    public static bool IsIgnored(AttributeData attribute)
+    {
+        return attribute.AttributeClass is
+        {
+            Name: IgnoreSettableAttribute.Name,
+            ContainingNamespace.Name: IgnoreSettableAttribute.Namespace
+        };
+    }
 
     public static IEnumerable<Settable> ToSettablesSnapshots(this IEnumerable<ISymbol> members, HashSet<string> traversedTypes)
         => members.Select((x, i) => ToSettableSnapshot(x, i, traversedTypes));

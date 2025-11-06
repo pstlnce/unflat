@@ -61,6 +61,12 @@ internal readonly struct UnflatMarkerAttributeParse(AttributeData source)
         _ => default
     };
 
+    public bool GenerateDbReaderProperty => FindNamedArg(UnflatMarkerAttributeGenerator.GenerateDbReaderProperty) switch
+    {
+        { Kind: not TypedConstantKind.Error } needToGenerateDbReader => needToGenerateDbReader.Value is true,
+        _ => false
+    };
+
     private TypedConstant? FindNamedArg(string parameter)
     {
         for (int i = 0; i != _source.NamedArguments.Length; i++)
@@ -120,7 +126,17 @@ internal readonly struct MatchingModel
 
     public readonly Dictionary<string, MatchingModel>? Inner = default;
 
-    public MatchingModel(TypeSnapshot type, Settable[] settables, MatchingSettings matchingSettings, Dictionary<string, MatchingModel>? inner = null)
+    public readonly string? GeneratedTypeName;
+    public readonly bool NeedToGenerateDbReader;
+
+    public MatchingModel(
+        TypeSnapshot type,
+        Settable[] settables,
+        MatchingSettings matchingSettings,
+        string? generatedTypeName = null,
+        bool needToGenerateDbReader = false,
+        Dictionary<string, MatchingModel>? inner = null
+    )
     {
         Type = type;
         MatchingSettings = matchingSettings;
@@ -130,12 +146,14 @@ internal readonly struct MatchingModel
         var requiredCount = settables.TakeWhile(x => x.Required).Count();
 
         var requiredSettables = ImmutableArray.Create(settables.AsSpan(0, requiredCount));
-        var otherSettables = ImmutableArray.Create(settables.AsSpan(requiredCount));
+        var otherSettables    = ImmutableArray.Create(settables.AsSpan(requiredCount));
 
-        Settables = ImmutableArray.Create(settables);
-        RequiredSettables = requiredSettables;
-        UsualSettables = otherSettables;
-        Inner = inner;
+        Settables              = ImmutableArray.Create(settables);
+        RequiredSettables      = requiredSettables;
+        UsualSettables         = otherSettables;
+        Inner                  = inner;
+        GeneratedTypeName      = generatedTypeName;
+        NeedToGenerateDbReader = needToGenerateDbReader;
     }
 
     private static readonly Comparer<Settable> _comparer = Comparer<Settable>.Create(static (x, y) => (x, y) switch

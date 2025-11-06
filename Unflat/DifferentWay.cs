@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Diagnostics.CodeAnalysis;
 using System.Xml.Linq;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Unflat;
 
@@ -358,7 +359,7 @@ internal static class DifferentWay
         return false;
     }
 
-    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter _, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap)
+    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter writer, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap)
     {
         var type = model.Type.DisplayString;
 
@@ -368,7 +369,8 @@ internal static class DifferentWay
         var isInGlobalNamespace = model.Type.Namespace.IsGlobal;
         var cache = new Dictionary<string, CustomParserMethod?>();
 
-        ModelToParse modelToParse = Convert(model,
+        ModelToParse modelToParse = Convert(
+            model,
             namespaces,
             isInGlobalNamespace,
             customParsersMap,
@@ -407,24 +409,34 @@ internal static class DifferentWay
         SettableCrawlerEnumerator2.RenderIndexReadingMethod(collected, wr, matchCase);
         var indexReading = sb.ToString();
 
-        return _.Scope[$$"""
-            internal sealed partial class {{model.Type.Name}}Parser
+        var generatedTypeName = model.GeneratedTypeName ?? $"{model.Type.Name}Parser";
+
+        _ = writer.Scope[$$"""
+            internal sealed partial class {{generatedTypeName}}
             {
-                {{_[AppendReadList(_, type, readIndexesCall, parsing)]}}
+                {{writer[AppendReadList(writer, type, readIndexesCall, parsing)]}}
 
-                {{_[AppendReadUnbuffered(_, type, readIndexesCall, parsing)]}}
+                {{writer[AppendReadUnbuffered(writer, type, readIndexesCall, parsing)]}}
 
-                {{_[AppendReadListAsync(_, type, isValueTask: false, readIndexesCall, parsing)]}}
+                {{writer[AppendReadListAsync(writer, type, isValueTask: false, readIndexesCall, parsing)]}}
 
-                {{_[AppendReadListAsync(_, type, isValueTask: true, readIndexesCall, parsing)]}}
+                {{writer[AppendReadListAsync(writer, type, isValueTask: true, readIndexesCall, parsing)]}}
 
-                {{_[AppendReadUnbufferedAsync(_, type, readIndexesCall, parsing)]}}
+                {{writer[AppendReadUnbufferedAsync(writer, type, readIndexesCall, parsing)]}}
 
-                {{_.Scope[schemaIndexesReading]}}
+                {{writer.Scope[schemaIndexesReading]}}
 
-                {{_.Scope[indexReading]}}
+                {{writer.Scope[indexReading]}}
             }
             """];
+
+        if(model.NeedToGenerateDbReader)
+        {
+            writer.Append("\n\n");
+            _ = writer.Scope[AppendDbReader(writer, model.Type.Name, collected)];
+        }
+
+        return default;
     }
 
     internal static IndentedInterpolatedStringHandler AppendReadUnbuffered(IndentStackWriter _, string type, string readIndexesCall, string parsing)
@@ -550,6 +562,457 @@ internal static class DifferentWay
                 }
             }
             """];
+    }
+
+    internal static IndentedInterpolatedStringHandler AppendDbReader(IndentStackWriter writer, string type, SettablesCollected collected)
+    {
+        // TODO: Add support for user-defined field sources
+        var fieldCount = collected.RequiredPrimitives.Length + collected.OptionalPrimitives.Length;
+        
+        var stringBuilder = new StringBuilder(1024);
+
+        return writer.Scope[$$"""
+            internal sealed partial class {{type}}DbReader : System.Data.Common.DbDataReader
+            {
+                public const int FIELD_COUNT = {{fieldCount}};
+
+                public static Task<bool> TrueTask  = Task.FromResult<bool>(true);
+                public static Task<bool> FalseTask = Task.FromResult<bool>(false);
+
+                internal IEnumerator<{{type}}> _itemEnumerator;
+                internal {{type}} _currentItem;
+                internal bool _isEnded;
+
+                public {{type}}DbReader(IEnumerator<{{type}}> enumerator)
+                {
+                    _itemEnumerator = enumerator;
+                }
+
+                public {{type}}DbReader(IEnumerable<{{type}}> items)
+                    : this(items.GetEnumerator())
+                { }
+
+                public override object this[int ordinal] => GetValue(ordinal);
+
+                public override object this[string name] => GetValue(GetOrdinal(name));
+
+                public override int Depth => throw new NotImplementedException();
+
+                public override int FieldCount => FIELD_COUNT;
+
+                public override bool HasRows => throw new NotImplementedException();
+
+                public override bool IsClosed => false;
+
+                public override int RecordsAffected => throw new NotImplementedException();
+
+                public override bool GetBoolean(int ordinal)
+                {
+                    return Convert.ToBoolean(GetValue(ordinal));
+                }
+
+                public override byte GetByte(int ordinal)
+                {
+                    return Convert.ToByte(GetValue(ordinal));
+                }
+
+                public override long GetBytes(int ordinal, long dataOffset, byte[]? buffer, int bufferOffset, int length)
+                {
+                    throw new NotImplementedException();
+                }
+
+                public override char GetChar(int ordinal)
+                {
+                    return Convert.ToChar(GetValue(ordinal));
+                }
+
+                public override long GetChars(int ordinal, long dataOffset, char[]? buffer, int bufferOffset, int length)
+                {
+                    throw new NotImplementedException();
+                }
+
+                public override string GetDataTypeName(int ordinal)
+                {
+                    throw new NotImplementedException();
+                }
+
+                public override DateTime GetDateTime(int ordinal)
+                {
+                    return Convert.ToDateTime(GetValue(ordinal));
+                }
+
+                public override decimal GetDecimal(int ordinal)
+                {
+                    return Convert.ToDecimal(GetValue(ordinal));
+                }
+
+                public override double GetDouble(int ordinal)
+                {
+                    return Convert.ToDouble(GetValue(ordinal));
+                }
+
+                public override System.Collections.IEnumerator GetEnumerator()
+                {
+                    throw new NotImplementedException();
+                }
+
+                public override Type GetFieldType(int ordinal)
+                {
+                    throw new NotImplementedException();
+                }
+
+                public override float GetFloat(int ordinal)
+                {
+                    return Convert.ToSingle(GetValue(ordinal));
+                }
+
+                public override Guid GetGuid(int ordinal)
+                {
+                    return Guid.Parse(GetString(ordinal));
+                }
+
+                public override short GetInt16(int ordinal)
+                {
+                    return Convert.ToInt16(GetValue(ordinal));
+                }
+
+                public override int GetInt32(int ordinal)
+                {
+                    return Convert.ToInt32(GetValue(ordinal));
+                }
+
+                public override long GetInt64(int ordinal)
+                {
+                    return Convert.ToInt64(GetValue(ordinal));
+                }
+
+                public override string GetName(int ordinal)
+                {
+                    {{writer.Scope[RenderGetName(collected, stringBuilder)]}}
+                }
+
+                public override string GetString(int ordinal)
+                {
+                    return Convert.ToString(GetValue(ordinal));
+                }
+
+                public override bool IsDBNull(int ordinal)
+                {
+                    return GetValue(ordinal) is DBNull;
+                }
+
+                public override int GetOrdinal(string name)
+                {
+                    {{writer.Scope[RenderGetOrdinal(collected, stringBuilder)]}}
+                }
+
+                public override object GetValue(int ordinal)
+                {
+                    {{writer.Scope[RenderGetValue(collected, stringBuilder)]}}
+                }
+
+                public override int GetValues(object[] values)
+                {
+                    {{writer.Scope[RenderGetValues(collected, stringBuilder)]}}
+                }
+
+                public override bool NextResult()
+                {
+                    return false;
+                }
+
+                public override Task<bool> ReadAsync(CancellationToken cancellationToken)
+                {
+                    if(cancellationToken.IsCancellationRequested)
+                    {
+                        return Task.FromCanceled<bool>(cancellationToken);
+                    }
+
+                    var readResult = Read();
+
+                    return readResult ? TrueTask : FalseTask;
+                }
+
+                public override bool Read()
+                {
+                    if(_isEnded)
+                    {
+                        return false;
+                    }
+
+                    var moved = _itemEnumerator.MoveNext();
+
+                    if(moved)
+                    {
+                        _currentItem = _itemEnumerator.Current;
+                    }
+                    else
+                    {
+                        _isEnded     = true;
+                        _currentItem = default;
+                    }
+
+                    return moved;
+                }
+            }
+            """
+        ];
+
+        static string RenderGetOrdinal(SettablesCollected collected, StringBuilder stringBuilder)
+        {
+            var slices              = collected.Slices.Span;
+            var settablesRequired   = collected.RequiredPrimitives.Span;
+            var settablesOptional   = collected.OptionalPrimitives.Span;
+            var sourceFieldPrefixes = collected.ColumnSourcePrefixes.Span;
+
+            var maxColumnNameLength = 0;
+            for (var sliceIndex = 0; sliceIndex < slices.Length; sliceIndex++)
+            {
+                var slice = slices[sliceIndex];
+                var fieldNamePrefix = sourceFieldPrefixes.Slice(slice.PrefixIndex, slice.PrefixLength);
+
+                var requiredEnd = slice.RequiredSimpleIndex + slice.RequiredSimpleCount;
+
+                for (var requiredSettableIndex = slice.RequiredSimpleIndex; requiredSettableIndex < requiredEnd; requiredSettableIndex++)
+                {
+                    var settable = settablesRequired[requiredSettableIndex];
+                    var length = fieldNamePrefix.Length + settable.Name.Length;
+                    maxColumnNameLength = Math.Max(maxColumnNameLength, length);
+                }
+
+                var optionalEnd = slice.NotRequiredSimpleIndex + slice.NotRequiredSimpleCount;
+
+                for (int optionalSettableIndex = slice.NotRequiredSimpleIndex; optionalSettableIndex < optionalEnd; optionalSettableIndex++)
+                {
+                    var settable = settablesOptional[optionalSettableIndex];
+                    var length = fieldNamePrefix.Length + settable.Name.Length;
+                    maxColumnNameLength = Math.Max(maxColumnNameLength, length);
+                }
+            }
+
+            // @TODO: Add support for user-defined field sources
+            stringBuilder
+                .Append("return name switch\n")
+                .Append('{');
+
+            var ordinal = 0;
+            
+            for(var sliceIndex = 0; sliceIndex < slices.Length; sliceIndex++)
+            {
+                var slice       = slices[sliceIndex];
+                var fieldPrefix = sourceFieldPrefixes.Slice(slice.PrefixIndex, slice.PrefixLength);
+
+                var requiredEnd = slice.RequiredSimpleIndex + slice.RequiredSimpleCount;
+                for(var requiredSettableIndex = slice.RequiredSimpleIndex; requiredSettableIndex < requiredEnd; requiredSettableIndex++)
+                {
+                    var settable = settablesRequired[requiredSettableIndex];
+                    var length = fieldPrefix.Length + settable.Name.Length;
+
+                    // Note:
+                    //   (maxColumnNameLength - length) shouldn't be less than zero but if for some reasons it actually does,
+                    //   then throwed exception would cause source gen to stop for too litle bug
+                    var paddingLength = Math.Max(0, maxColumnNameLength - length);
+
+                    stringBuilder.Append("\n    \"").Append(fieldPrefix).Append(settable.Name).Append('"').Append(' ', paddingLength).Append(" => ").Append(ordinal).Append(',');
+                    ordinal += 1;
+                }
+
+                var optionalEnd = slice.NotRequiredSimpleIndex + slice.NotRequiredSimpleCount;
+                for (var optionalSettableIndex = slice.NotRequiredSimpleIndex; optionalSettableIndex < optionalEnd; optionalSettableIndex++)
+                {
+                    var settable = settablesOptional[optionalSettableIndex];
+                    var length = fieldPrefix.Length + settable.Name.Length;
+                    var paddingLength = Math.Max(0, maxColumnNameLength - length);
+
+                    stringBuilder.Append("\n    \"").Append(fieldPrefix).Append(settable.Name).Append('"').Append(' ', paddingLength).Append(" => ").Append(ordinal).Append(',');
+                    ordinal += 1;
+                }
+            }
+
+            stringBuilder
+                .Append("\n    _ => -1")
+                .Append("\n};");
+
+            var methodBody = stringBuilder.ToString();
+            stringBuilder.Clear();
+
+            return methodBody;
+        }
+
+        static string RenderGetName(SettablesCollected collected, StringBuilder stringBuilder)
+        {
+            var slices            = collected.Slices.Span;
+            var settablesRequired = collected.RequiredPrimitives.Span;
+            var settablesOptional = collected.OptionalPrimitives.Span;
+            var sourcePrefixes    = collected.ColumnSourcePrefixes.Span;
+
+            // @TODO: Add support for user-defined field sources
+            stringBuilder
+                .Append("return ordinal switch\n")
+                .Append('{');
+
+            var ordinal = 0;
+
+            for (var sliceIndex = 0; sliceIndex < slices.Length; sliceIndex++)
+            {
+                var slice = slices[sliceIndex];
+                var fieldPrefix = sourcePrefixes.Slice(slice.PrefixIndex, slice.PrefixLength);
+
+                var requiredEnd = slice.RequiredSimpleIndex + slice.RequiredSimpleCount;
+                for (var requiredSettableIndex = slice.RequiredSimpleIndex; requiredSettableIndex < requiredEnd; requiredSettableIndex++)
+                {
+                    var settable = settablesRequired[requiredSettableIndex];
+
+                    stringBuilder.Append("\n    ").Append(ordinal).Append(" => \"").Append(fieldPrefix).Append(settable.Name).Append('"').Append(',');
+                    ordinal += 1;
+                }
+
+                var optionalEnd = slice.NotRequiredSimpleIndex + slice.NotRequiredSimpleCount;
+                for (var optionalSettableIndex = slice.NotRequiredSimpleIndex; optionalSettableIndex < optionalEnd; optionalSettableIndex++)
+                {
+                    var settable = settablesOptional[optionalSettableIndex];
+
+                    stringBuilder.Append("\n    ").Append(ordinal).Append(" => \"").Append(fieldPrefix).Append(settable.Name).Append('"').Append(',');
+                    ordinal += 1;
+                }
+            }
+
+            stringBuilder
+                .Append("\n    _ => throw new IndexOutOfRangeException($\"Expected the ordinal value to be between 0 and {FIELD_COUNT - 1}, but got: {ordinal}\")")
+                .Append("\n};");
+
+            var methodBody = stringBuilder.ToString();
+            stringBuilder.Clear();
+
+            return methodBody;
+        }
+
+        static string RenderGetValue(SettablesCollected collected, StringBuilder stringBuilder)
+        {
+            var slices            = collected.Slices.Span;
+            var settablesRequired = collected.RequiredPrimitives.Span;
+            var settablesOptional = collected.OptionalPrimitives.Span;
+            var accessPrefixes    = collected.AccessPrefixes.Span;
+
+            // @TODO: Add support for user-defined field sources
+            stringBuilder
+                .Append("return ordinal switch\n")
+                .Append('{');
+
+            var ordinal = 0;
+
+            for (var sliceIndex = 0; sliceIndex < slices.Length; sliceIndex++)
+            {
+                var slice = slices[sliceIndex];
+                var accessPrefix = accessPrefixes.Slice(slice.AccessIndex, slice.AccessLenth);
+
+                var requiredEnd = slice.RequiredSimpleIndex + slice.RequiredSimpleCount;
+                for (var requiredSettableIndex = slice.RequiredSimpleIndex; requiredSettableIndex < requiredEnd; requiredSettableIndex++)
+                {
+                    var settable = settablesRequired[requiredSettableIndex];
+
+                    stringBuilder.Append("\n    ").Append(ordinal).Append(" => _currentItem").Append(accessPrefix).Append(".").Append(settable.Name).Append(',');
+                    ordinal += 1;
+                }
+
+                var optionalEnd = slice.NotRequiredSimpleIndex + slice.NotRequiredSimpleCount;
+                for (var optionalSettableIndex = slice.NotRequiredSimpleIndex; optionalSettableIndex < optionalEnd; optionalSettableIndex++)
+                {
+                    var settable = settablesOptional[optionalSettableIndex];
+
+                    stringBuilder.Append("\n    ").Append(ordinal).Append(" => _currentItem").Append(accessPrefix).Append(".").Append(settable.Name).Append(',');
+                    ordinal += 1;
+                }
+            }
+
+            stringBuilder
+                .Append("\n    _ => throw new IndexOutOfRangeException($\"Expected the ordinal value to be between 0 and {FIELD_COUNT - 1}, but got: {ordinal}\")")
+                .Append("\n};");
+
+            var methodBody = stringBuilder.ToString();
+            stringBuilder.Clear();
+
+            return methodBody;
+        }
+
+        static string RenderGetValues(SettablesCollected collected, StringBuilder stringBuilder)
+        {
+            var slices            = collected.Slices.Span;
+            var settablesRequired = collected.RequiredPrimitives.Span;
+            var settablesOptional = collected.OptionalPrimitives.Span;
+            var accessPrefixes    = collected.AccessPrefixes.Span;
+
+            stringBuilder
+                .Append("int count = Math.Min(FIELD_COUNT, values.Length);\n")
+                .Append("switch(count)\n")
+                .Append("{\n");
+
+            var topDownIndex = settablesRequired.Length + settablesOptional.Length;
+
+            for (var sliceIndex = slices.Length - 1; sliceIndex >= 0; sliceIndex--)
+            {
+                var slice = slices[sliceIndex];
+                var accessPrefix = accessPrefixes.Slice(slice.AccessIndex, slice.AccessLenth);
+
+                var requiredEnd = slice.RequiredSimpleIndex + slice.RequiredSimpleCount;
+                for (var requiredSettableIndex = requiredEnd - 1; requiredSettableIndex >= slice.RequiredSimpleIndex; requiredSettableIndex--)
+                {
+                    var settable = settablesRequired[requiredSettableIndex];
+
+                    stringBuilder
+                        .Append("    case ").Append(topDownIndex).Append(":\n")
+                        .Append("        values[").Append(topDownIndex - 1).Append("] = _currentItem").Append(accessPrefix).Append(".").Append(settable.Name).Append(";\n");
+
+                    topDownIndex -= 1;
+
+                    if (topDownIndex > 0)
+                    {
+                        stringBuilder
+                            .Append("        goto case ").Append(topDownIndex).Append(";\n");
+                    }
+                    else
+                    {
+                        stringBuilder
+                            .Append("        goto default;\n");
+                    }
+                }
+
+                var optionalEnd = slice.NotRequiredSimpleIndex + slice.NotRequiredSimpleCount;
+                for (var optionalSettableIndex = optionalEnd - 1; optionalSettableIndex >= slice.NotRequiredSimpleIndex; optionalSettableIndex--)
+                {
+                    var settable = settablesOptional[optionalSettableIndex];
+
+                    stringBuilder
+                        .Append("    case ").Append(topDownIndex).Append(":\n")
+                        .Append("        values[").Append(topDownIndex - 1).Append("] = _currentItem").Append(accessPrefix).Append(".").Append(settable.Name).Append(";\n");
+
+                    topDownIndex -= 1;
+
+                    if (topDownIndex > 0)
+                    {
+                        stringBuilder
+                            .Append("        goto case ").Append(topDownIndex).Append(";\n");
+                    }
+                    else
+                    {
+                        stringBuilder
+                            .Append("        goto default;\n");
+                    }
+                }
+            }
+
+            stringBuilder
+                .Append("    default: break;\n")
+                .Append('}');
+
+            stringBuilder
+                .Append("\n\nreturn count;");
+
+            var methodBody = stringBuilder.ToString();
+            stringBuilder.Clear();
+
+            return methodBody;
+        }
     }
 }
 
@@ -790,26 +1253,36 @@ internal static class SettableCrawlerEnumerator2
             }
 
             var accessIndex = access.Count;
-            int accessLength;
+            int accessLength = 0;
 
             {
+                // Note: we no longer provide full path with backed variable name
+                /*
                 var boilerplateLength = Append(access, "parsed");
 
                 if(parentIndex != -1)
                 {
                     boilerplateLength += 1;
                     access.Add('.');
-                }
+                }*/
 
-                accessLength = Append(access, accessStack);
 
-                if (accessLength != 0)
+                // Note: format would be like ".PropertyOfComplexType", with '.' at the beginning for ease of use
+                if(accessStack.Length != 0)
                 {
                     accessLength += 1;
                     access.Add('.');
                 }
 
-                accessLength += boilerplateLength;
+                accessLength += Append(access, accessStack);
+
+                if(accessLength != 0 || parentLink.Name.Length != 0)
+                {
+                    accessLength += 1;
+                    access.Add('.');
+                }
+
+                //accessLength += boilerplateLength;
                 accessLength += Append(access, parentLink.Name);
             }
 
@@ -1523,6 +1996,25 @@ internal static class SettableCrawlerEnumerator2
             w.Append(",\n");
         }
 
+        // Note:
+        //   access now in format like "PropertyOfComplexType.PropertyOfAnotherComplexType."
+        //   and to get a full access path to concrete property we need concate "parsed" (variable name) with access prefix and actual property of primitive type
+        //   for example: "parsed.PropertyOfComplexType.PropertyOfAnotherComplexType.PropertyPrimitiveType"
+
+        // if it's "node"
+        if (!current.IsRequired)
+        {
+            w.Append("parsed");
+
+            // if it's not the first "node"
+            /*
+            if(sliceIndex != 0)
+            {
+                w.Append(".");
+            }
+            */
+        }
+
         w.Append(access);
 
         if(!setToDefault)
@@ -1631,19 +2123,19 @@ internal static class SettableCrawlerEnumerator2
         ref var first = ref slices[0];
 
         // Main looping
-        for (int i = 0; i < slices.Length && !token.IsCancellationRequested; i++)
+        for (int rootIndex = 0; rootIndex < slices.Length && !token.IsCancellationRequested; rootIndex++)
         {
-            var root = slices[i];
+            var root = slices[rootIndex];
 
             // Object that is returned from parsing should be created anyway
-            if (i == 0) goto AfterCheck;
+            if (rootIndex == 0) goto AfterCheck;
 
             // required parts of this model should be already parsed by loop after label "AfterCheck"
             if (root.IsRequired) goto ParsingOptionals;
 
             var checkingStopwatch = Stopwatch.StartNew();
 
-            if(i != 0)
+            if(rootIndex != 0)
             {
                 w.Append("\n\n");
             }
@@ -1652,7 +2144,7 @@ internal static class SettableCrawlerEnumerator2
 
             step.Inited = false;
             step.PreviousParentIndex = root.ParentIndex;
-            step.RootIndex = i;
+            step.RootIndex = rootIndex;
             step.RootHaveRequiredMembers = root.AllRequiredSimpleCount > 0;
             step.RootHaveAnyMembers = root.AllRequiredSimpleCount > 0 || root.AllNotRequiredSimpleCount > 0;
 
@@ -1674,7 +2166,7 @@ internal static class SettableCrawlerEnumerator2
             }
             else if(root.AllRequiredSimpleCount > 0)
             {
-                endOfIteration = i;
+                endOfIteration = rootIndex;
             }
             else if(root.LastRecursiveChildIndex >= 0)
             {
@@ -1682,10 +2174,10 @@ internal static class SettableCrawlerEnumerator2
             }
             else
             {
-                endOfIteration = i;
+                endOfIteration = rootIndex;
             }
 
-            for(var ch = i; ch <= endOfIteration; ++ch)
+            for(var ch = rootIndex; ch <= endOfIteration; ++ch)
             {
                 var child = slices[ch];
 
@@ -1710,7 +2202,7 @@ internal static class SettableCrawlerEnumerator2
                         }
                     }
 
-                    if (ch == i)
+                    if (ch == rootIndex)
                     {
                         break; // for root only required primitives need to be ckecked
                     }
@@ -1737,7 +2229,7 @@ internal static class SettableCrawlerEnumerator2
                 goto ParsingOptionals;
             }
 
-            if(i == 0)
+            if(rootIndex == 0)
             {
                 w.Append($"{root.TypeDisplayName} ");
             }
@@ -1754,7 +2246,7 @@ internal static class SettableCrawlerEnumerator2
                     slices: ref slices,
                     settables: required.Slice(root.RequiredSimpleIndex, root.RequiredSimpleCount),
                     current: ref root,
-                    sliceIndex: i,
+                    sliceIndex: rootIndex,
                     parentIndex: root.ParentIndex,
                     w: w,
                     notFirstParentElement: false,
@@ -1772,15 +2264,15 @@ internal static class SettableCrawlerEnumerator2
 
                 var notFirstParentElement = false;
 
-                if(i != 0)
+                if(rootIndex != 0)
                 {
-                    notFirstParentElement = reqChild.ParentIndex == i
+                    notFirstParentElement = reqChild.ParentIndex == rootIndex
                         ? root.RequiredSimpleCount > 0 || r != root.FirstRequiredChildIndex
                         : slices[reqChild.ParentIndex].RequiredSimpleCount > 0 || r != slices[reqChild.ParentIndex].FirstChildIndex;
                 }
                 else
                 {
-                    notFirstParentElement = slices[i].RequiredSimpleCount > 0 || slices[i].FirstRequiredChildIndex != r;
+                    notFirstParentElement = slices[rootIndex].RequiredSimpleCount > 0 || slices[rootIndex].FirstRequiredChildIndex != r;
                 }
 
                 var colStr = columnNames.Slice(reqChild.ColumnNameIndex, reqChild.ColumnNameLength);
@@ -1797,7 +2289,7 @@ internal static class SettableCrawlerEnumerator2
                     hasAnyRequired: reqChild.AllRequiredSimpleCount > 0 || reqChild.LastReqRecursiveChildIndex > 0,
                     colstr: colStr,
                     typeName: reqChild.TypeDisplayName,
-                    access: r == i ? accesses.Slice(root.AccessIndex, root.AccessLenth) : reqChild.ParentLink!.Name.AsSpan(),
+                    access: r == rootIndex ? accesses.Slice(root.AccessIndex, root.AccessLenth) : reqChild.ParentLink!.Name.AsSpan(),
                     setToDefault: reqChild.SetToDefault
                 );
             }
@@ -1821,7 +2313,7 @@ internal static class SettableCrawlerEnumerator2
 
                     w.Append("if(").Append(colStr).Append("_").Append(settable.Name).Append(" != -1)")
                     .Append("\n{\n\t")
-                        .Append(accessPref).Append(".").Append(settable.Name).Append(" = ");
+                        .Append("parsed").Append(accessPref).Append(".").Append(settable.Name).Append(" = ");
 
                     RenderCasting(w, settable, colStr);
 
@@ -1832,11 +2324,11 @@ internal static class SettableCrawlerEnumerator2
 
             // escaping if scopes
             {
-                if(i != 0 && root.LastRecursiveChildIndex < 0)
+                if(rootIndex != 0 && root.LastRecursiveChildIndex < 0)
                 {
                     // it means we added if(...) { ...
                     if(true && // TODO
-                        first.LastReqRecursiveChildIndex < i // we omitted if for the top lvl element
+                        first.LastReqRecursiveChildIndex < rootIndex // we omitted if for the top lvl element
                         && !root.IsRequired
                         && root.AllRequiredSimpleCount + root.AllNotRequiredSimpleCount > 0)
                     {
@@ -1848,7 +2340,7 @@ internal static class SettableCrawlerEnumerator2
 
                     var scopeOwner = slices[root.ParentIndex];
                     
-                    while (scopeOwner.ParentIndex >= 0 && scopeOwner.LastRecursiveChildIndex == i && !scopeOwner.IsRequired)
+                    while (scopeOwner.ParentIndex >= 0 && scopeOwner.LastRecursiveChildIndex == rootIndex && !scopeOwner.IsRequired)
                     {
                         w.PopIndent();
                         w.Append("\n}");
@@ -1967,7 +2459,7 @@ internal static class SettableCrawlerEnumerator2
 
                 foreach(var sourceField in sourceFields)
                 {
-                    foreach (var sourceCase in sourceFields)
+                    foreach (var sourceCase in matching.ToAllCasesForCompare(sourceField))
                     {
                         var sourceCase2 = sourcePrefix.Length > 0
                             ? Concat(sourcePrefix, sourceCase.AsSpan())

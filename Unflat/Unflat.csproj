@@ -12,7 +12,7 @@
 
 	  <!-- Package settings -->
 	  <PackageId>Unflat</PackageId>
-	  <Version>0.0.4</Version>
+	  <Version>0.0.55</Version>
 	  <Authors>pstlnce</Authors>
 	  <Description>AOT ORM Сode generator for fast parsing DataReader into complex classes/structs with zero allocations</Description>
 	  <PackageTags>sourcegenerator;roslyn</PackageTags>

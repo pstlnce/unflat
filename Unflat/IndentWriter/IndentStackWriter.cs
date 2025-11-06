@@ -362,11 +362,13 @@ public static class LineSplitter
 
 internal static class StringBuilderExtensions
 {
-    public static unsafe void Append(this StringBuilder builder, ReadOnlySpan<char> span)
+    public static unsafe StringBuilder Append(this StringBuilder builder, ReadOnlySpan<char> span)
     {
         fixed (char* ptr = span)
         {
             builder.Append(ptr, span.Length);
         }
+
+        return builder;
     }
 }

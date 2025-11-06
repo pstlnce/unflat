@@ -72,6 +72,8 @@ internal static class ParseTargetsScraper
             type: typeSnapshot,
             settables: settables,
             matchingSettings: settings,
+            generatedTypeName: parser.ClassName,
+            needToGenerateDbReader: parser.GenerateDbReaderProperty,
             inner: SearchComplexTypes(target, settings, traversedTypes)
         );
 

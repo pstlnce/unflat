@@ -13,6 +13,7 @@ internal static class UnflatMarkerAttributeGenerator
 
     public const string ClassNameProperty = "ClassName";
     public const string MatchCaseProperty = "Case";
+    public const string GenerateDbReaderProperty = "GenerateDbReader";
 
     public static readonly (string name, int value) DefaultCase = (MatchCase.All.ToString(), (int)MatchCase.All);
 
@@ -26,6 +27,7 @@ namespace {Namespace}
     {{
         public string? {ClassNameProperty} {{ get; set; }}
         public {MatchCaseGenerator.EnumName} {MatchCaseProperty} {{ get; set; }} = {MatchCaseGenerator.EnumName}.{DefaultCase.name};
+        public bool {GenerateDbReaderProperty} {{ get; set; }}
     }}
 
     {IgnoreSettableAttribute.Source}

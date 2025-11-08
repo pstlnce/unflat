@@ -1347,7 +1347,7 @@ public class BigModelBenchmark
 
 }
 
-[UnflatMarker(Case = MatchCase.MatchOriginal)]
+[UnflatMarker(Case = MatchCase.MatchOriginal, GenerateDbReader = false)]
 [GenerateDataReaderMapper]
 public sealed class Person
 {

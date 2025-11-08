@@ -61,11 +61,13 @@ internal readonly struct UnflatMarkerAttributeParse(AttributeData source)
         _ => default
     };
 
-    public bool GenerateDbReaderProperty => FindNamedArg(UnflatMarkerAttributeGenerator.GenerateDbReaderProperty) switch
-    {
-        { Kind: not TypedConstantKind.Error } needToGenerateDbReader => needToGenerateDbReader.Value is true,
-        _ => false
-    };
+    public bool GenerateDbReaderProperty => FindAndParseToBool(UnflatMarkerAttributeGenerator.GenerateDbReaderProperty);
+
+    public bool GenerateDapperExtensionsProperty => FindAndParseToBool(UnflatMarkerAttributeGenerator.GenerateDapperExtensionsProperty);
+
+    private bool FindAndParseToBool(string parameter)
+        => FindNamedArg(parameter) is { Kind: not TypedConstantKind.Error, Value: true };
+
 
     private TypedConstant? FindNamedArg(string parameter)
     {
@@ -128,6 +130,7 @@ internal readonly struct MatchingModel
 
     public readonly string? GeneratedTypeName;
     public readonly bool NeedToGenerateDbReader;
+    public readonly bool NeedToGenerateDapperExtensions;
 
     public MatchingModel(
         TypeSnapshot type,
@@ -135,6 +138,7 @@ internal readonly struct MatchingModel
         MatchingSettings matchingSettings,
         string? generatedTypeName = null,
         bool needToGenerateDbReader = false,
+        bool needToGenerateDapperExtension = false,
         Dictionary<string, MatchingModel>? inner = null
     )
     {
@@ -154,6 +158,7 @@ internal readonly struct MatchingModel
         Inner                  = inner;
         GeneratedTypeName      = generatedTypeName;
         NeedToGenerateDbReader = needToGenerateDbReader;
+        NeedToGenerateDapperExtensions = needToGenerateDapperExtension;
     }
 
     private static readonly Comparer<Settable> _comparer = Comparer<Settable>.Create(static (x, y) => (x, y) switch

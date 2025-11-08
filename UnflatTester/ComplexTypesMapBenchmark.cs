@@ -151,7 +151,7 @@ public class ComplexTypesMapBenchmark
     }
 }
 
-[UnflatMarker]
+[UnflatMarker(GenerateDbReader = true)]
 public sealed class SomeComplexType
 {
     public int Id { get; set; }

@@ -56,11 +56,11 @@ internal static class DifferentWay
 
                 {{wr.Scope[
                     typeNamespace == null
-                    ? AppendClass(wr, model.Value, matchCase, customParsersMap)
+                    ? AppendClass(wr, model.Value, matchCase, customParsersMap, isInNamespace: false)
                     : wr[$$""" 
                         namespace {{typeNamespace}}
                         {
-                            {{AppendClass(wr, model.Value, matchCase, customParsersMap)}}
+                            {{AppendClass(wr, model.Value, matchCase, customParsersMap, isInNamespace: true)}}
                         }
                         """
                     ]
@@ -359,10 +359,8 @@ internal static class DifferentWay
         return false;
     }
 
-    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter writer, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap)
+    internal static IndentedInterpolatedStringHandler AppendClass(IndentStackWriter writer, MatchingModel model, MatchCase matchCase, CustomParsersMap customParsersMap, bool isInNamespace)
     {
-        var type = model.Type.DisplayString;
-
         var sb = new StringBuilder();
 
         var namespaces = model.Type.Namespace.Namespaces;
@@ -378,20 +376,6 @@ internal static class DifferentWay
         );
 
         var collected = SettableCrawlerEnumerator2.Collect(modelToParse);
-
-        /*
-        var required = collected.RequiredPrimitives.Span;
-        for(var i = 0; i < required.Length; i++)
-        {
-            FindCustomParser(required[i], modelToParse.Namespaces, modelToParse.IsInGlobalNamespace, customParsersMap, cache);
-        }
-
-        var optional = collected.OptionalPrimitives.Span;
-        for (var i = 0; i < optional.Length; i++)
-        {
-            FindCustomParser(optional[i], modelToParse.Namespaces, modelToParse.IsInGlobalNamespace, customParsersMap, cache);
-        }
-        */
 
         var wr = ClearAndStartNew(sb);
         SettableCrawlerEnumerator2.RenderParsing(collected, wr);
@@ -410,6 +394,8 @@ internal static class DifferentWay
         var indexReading = sb.ToString();
 
         var generatedTypeName = model.GeneratedTypeName ?? $"{model.Type.Name}Parser";
+
+        var type = model.Type.DisplayString;
 
         _ = writer.Scope[$$"""
             internal sealed partial class {{generatedTypeName}}
@@ -430,10 +416,26 @@ internal static class DifferentWay
             }
             """];
 
+        if(model.NeedToGenerateDapperExtensions)
+        {
+            writer.Append("\n\n");
+            if(isInNamespace)
+            {
+                writer.Append("    ");
+            }
+
+            AppendDapperExtension(writer, model.Type.Name, generatedTypeName);
+        }
+
         if(model.NeedToGenerateDbReader)
         {
             writer.Append("\n\n");
-            _ = writer.Scope[AppendDbReader(writer, model.Type.Name, collected)];
+            if (isInNamespace)
+            {
+                writer.Append("    ");
+            }
+
+            AppendDbReader(writer, model.Type.Name, collected);
         }
 
         return default;
@@ -470,8 +472,18 @@ internal static class DifferentWay
             internal static List<{{type}}> ReadList<TReader>(TReader reader)
                 where TReader : IDataReader
             {
-                var result = new List<{{type}}>();
+                return ReadList<TReader>(reader, new List<{{type}}>());
+            }
+            
+            internal static List<{{type}}> ReadList<TReader>(TReader reader, int capacity)
+                where TReader : IDataReader
+            {
+                return ReadList<TReader>(reader, new List<{{type}}>(capacity));
+            }
 
+            internal static List<{{type}}> ReadList<TReader>(TReader reader, List<{{type}}> result)
+                where TReader : IDataReader
+            {
                 if(!reader.Read())
                 {
                     return result;
@@ -493,16 +505,27 @@ internal static class DifferentWay
 
     internal static IndentedInterpolatedStringHandler AppendReadListAsync(IndentStackWriter _, string type, bool isValueTask, string readIndexesCall, string parsing)
     {
+        var (before, after, methodName) = isValueTask
+            ? ("ValueTask<List<", ">> ReadListAsyncValue<TReader>(TReader reader", "ReadListAsyncValue")
+            : ("Task<List<", ">> ReadListAsync<TReader>(TReader reader", "ReadListAsync");
+
         return _.Scope[
             $$"""
-            {{_[isValueTask
-              ? _[$"internal static async ValueTask<List<{type}>> ReadListAsyncValue<TReader>(TReader reader, CancellationToken token = default)"]
-              : _[$"internal static async Task<List<{type}>> ReadListAsync<TReader>(TReader reader, CancellationToken token = default)"]
-            ]}}
+            internal static {{before}}{{type}}{{after}}, CancellationToken token = default)
                 where TReader : DbDataReader
             {
-                var result = new List<{{type}}>();
+                return {{methodName}}(reader, new List<{{type}}>(), token);
+            }
+            
+            internal static {{before}}{{type}}{{after}}, int capacity, CancellationToken token = default)
+                where TReader : DbDataReader
+            {
+                return {{methodName}}(reader, new List<{{type}}>(capacity), token);
+            }
 
+            internal static async {{before}}{{type}}{{after}}, List<{{type}}> result, CancellationToken token = default)
+                where TReader : DbDataReader
+            {
                 if(!(await reader.ReadAsync(token).ConfigureAwait(false)))
                 {
                     return result;
@@ -561,7 +584,187 @@ internal static class DifferentWay
                     }
                 }
             }
+
+            internal static async IAsyncEnumerable<{{type}}> ReadUnbufferedAsync<TReader>(Task<TReader> readerTask, [EnumeratorCancellationAttribute] CancellationToken token = default)
+                where TReader : DbDataReader
+            {
+                await using (TReader reader = await readerTask.ConfigureAwait(false))
+                {
+                    if(!(await reader.ReadAsync(token).ConfigureAwait(false)))
+                    {
+                        yield break;
+                    }
+            
+                    {{_.Scope[readIndexesCall]}}
+            
+                    Task<bool> reading;
+            
+                    while(true)
+                    {
+                        {{_.Scope[parsing]}}
+            
+                        reading = reader.ReadAsync(token);
+            
+                        yield return parsed;
+            
+                        if(!(await reading.ConfigureAwait(false)))
+                        {
+                            break;
+                        }
+                    }
+                }
+            }
             """];
+    }
+
+    internal static IndentedInterpolatedStringHandler AppendDapperExtension(IndentStackWriter writer, string type, string parser)
+    {
+        return writer.Scope[$$"""
+            internal static partial class {{type}}DapperExtensions
+            {
+                public static IAsyncEnumerable<T> QueryUnbufferedAsync<T>(this DbConnection cnn, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    Dapper.CommandDefinition commandDefinition = new Dapper.CommandDefinition(
+                        commandText       : sql,
+                        parameters        : param,
+                        transaction       : transaction,
+                        commandTimeout    : commandTimeout,
+                        commandType       : commandType,
+                        flags             : flags,
+                        cancellationToken : token
+                    );
+
+                    return (IAsyncEnumerable<T>)((object){{parser}}.ReadUnbufferedAsync<DbDataReader>(
+                        readerTask : Dapper.SqlMapper.ExecuteReaderAsync(cnn, commandDefinition),
+                        token      : token
+                    ));
+                }
+
+                public static Task<IEnumerable<T>> QueryAsync<T>(this DbConnection cnn, int bufferCapacity, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    return QueryAsync<T>(
+                        cnn            : cnn,
+                        buffer         : new List<{{type}}>(bufferCapacity),
+                        sql            : sql,
+                        param          : param,
+                        transaction    : transaction,
+                        commandTimeout : commandTimeout,
+                        commandType    : commandType,
+                        flags          : flags,
+                        token          : token
+                    );
+                }
+
+                public static async Task<IEnumerable<T>> QueryAsync<T>(this DbConnection cnn, List<{{type}}> buffer, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    Dapper.CommandDefinition commandDefinition = new Dapper.CommandDefinition(
+                        commandText       : sql,
+                        parameters        : param,
+                        transaction       : transaction,
+                        commandTimeout    : commandTimeout,
+                        commandType       : commandType,
+                        flags             : flags,
+                        cancellationToken : token
+                    );
+            
+                    await using (DbDataReader reader = (await Dapper.SqlMapper.ExecuteReaderAsync(cnn, commandDefinition).ConfigureAwait(false)))
+                    {
+                        return (IEnumerable<T>)((object)(await {{parser}}.ReadListAsyncValue(reader, buffer, token).ConfigureAwait(false)));
+                    }
+                }
+
+                public static async Task<IEnumerable<T>> QueryAsync<T>(this DbConnection cnn, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    Dapper.CommandDefinition commandDefinition = new Dapper.CommandDefinition(
+                        commandText       : sql,
+                        parameters        : param,
+                        transaction       : transaction,
+                        commandTimeout    : commandTimeout,
+                        commandType       : commandType,
+                        flags             : flags,
+                        cancellationToken : token
+                    );
+
+                    await using (DbDataReader reader = (await Dapper.SqlMapper.ExecuteReaderAsync(cnn, commandDefinition).ConfigureAwait(false)))
+                    {
+                        if((flags & Dapper.CommandFlags.Buffered) == Dapper.CommandFlags.Buffered)
+                        {
+                            return (IEnumerable<T>)((object)(await {{parser}}.ReadListAsyncValue(reader, token).ConfigureAwait(false)));
+                        }
+                        else
+                        {
+                            return (IEnumerable<T>)((object){{parser}}.ReadUnbuffered(reader));
+                        }
+                    }
+                }
+
+                public static ValueTask<IEnumerable<T>> QueryAsyncValue<T>(this DbConnection cnn, int bufferCapacity, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    return QueryAsyncValue<T>(
+                        cnn            : cnn,
+                        buffer         : new List<{{type}}>(bufferCapacity),
+                        sql            : sql,
+                        param          : param,
+                        transaction    : transaction,
+                        commandTimeout : commandTimeout,
+                        commandType    : commandType,
+                        flags          : flags,
+                        token          : token
+                    );
+                }
+            
+                public static async ValueTask<IEnumerable<T>> QueryAsyncValue<T>(this DbConnection cnn, List<{{type}}> buffer, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    Dapper.CommandDefinition commandDefinition = new Dapper.CommandDefinition(
+                        commandText       : sql,
+                        parameters        : param,
+                        transaction       : transaction,
+                        commandTimeout    : commandTimeout,
+                        commandType       : commandType,
+                        flags             : flags,
+                        cancellationToken : token
+                    );
+            
+                    await using (DbDataReader reader = (await Dapper.SqlMapper.ExecuteReaderAsync(cnn, commandDefinition).ConfigureAwait(false)))
+                    {
+                        return (IEnumerable<T>)((object)(await {{parser}}.ReadListAsyncValue(reader, buffer, token).ConfigureAwait(false)));
+                    }
+                }
+            
+                public static async ValueTask<IEnumerable<T>> QueryAsyncValue<T>(this DbConnection cnn, string sql, object? param = null, IDbTransaction? transaction = null, int? commandTimeout = null, CommandType? commandType = null, Dapper.CommandFlags flags = Dapper.CommandFlags.Buffered, CancellationToken token = default)
+                    where T : {{type}}
+                {
+                    Dapper.CommandDefinition commandDefinition = new Dapper.CommandDefinition(
+                        commandText       : sql,
+                        parameters        : param,
+                        transaction       : transaction,
+                        commandTimeout    : commandTimeout,
+                        commandType       : commandType,
+                        flags             : flags,
+                        cancellationToken : token
+                    );
+            
+                    await using (DbDataReader reader = (await Dapper.SqlMapper.ExecuteReaderAsync(cnn, commandDefinition).ConfigureAwait(false)))
+                    {
+                        if((flags & Dapper.CommandFlags.Buffered) == Dapper.CommandFlags.Buffered)
+                        {
+                            return (IEnumerable<T>)((object)(await {{parser}}.ReadListAsyncValue(reader, token).ConfigureAwait(false)));
+                        }
+                        else
+                        {
+                            return (IEnumerable<T>)((object){{parser}}.ReadUnbuffered(reader));
+                        }
+                    }
+                }
+            }
+            """
+        ];
     }
 
     internal static IndentedInterpolatedStringHandler AppendDbReader(IndentStackWriter writer, string type, SettablesCollected collected)

@@ -74,6 +74,7 @@ internal static class ParseTargetsScraper
             matchingSettings: settings,
             generatedTypeName: parser.ClassName,
             needToGenerateDbReader: parser.GenerateDbReaderProperty,
+            needToGenerateDapperExtension: parser.GenerateDapperExtensionsProperty,
             inner: SearchComplexTypes(target, settings, traversedTypes)
         );
 

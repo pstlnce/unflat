@@ -23,7 +23,7 @@ internal static class UnflatMarkerAttributeGenerator
 
 namespace {Namespace}
 {{
-    [AttributeUsage(AttributeTargets.Class)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct)]
     internal sealed class {AttributeName} : Attribute
     {{
         public string? {ClassNameProperty} {{ get; set; }}

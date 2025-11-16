@@ -23,9 +23,7 @@ using System.Diagnostics.CodeAnalysis;
 //return;
 
 var con = new SqlConnection();
-var re = con.CreateCommand().ExecuteReaderAsync().GetAwaiter().GetResult();
 
-re.ReadAsync();
 
 #if false
 

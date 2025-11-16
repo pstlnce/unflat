@@ -44,8 +44,8 @@ namespace UnflatTester
         public required ClassWithNamespace RequiredRecursive { get; set; }
     }
 
-    [UnflatMarker]
-    internal class ClassWithNamespace
+    [UnflatMarker(GenerateDapperExtensions = true)]
+    internal record struct ClassWithNamespace
     {
         [UnflatSource(0)]
         public string Property1 { get; set; }
@@ -56,9 +56,9 @@ namespace UnflatTester
         [UnflatSource("bb")]
         public required bool RequiredBoolean { get; set; }
 
-        public required ClassWithNamespace RequiredRecursive { get; set; }
+        //public required ClassWithNamespace RequiredRecursive { get; set; }
 
-        public ClassWithNamespace RequriedOptional { get; set; }
+        //public ClassWithNamespace RequriedOptional { get; set; }
 
         [UnflatPrefix("_3_")]
         public required InnerClass3 _3 { get; set; }

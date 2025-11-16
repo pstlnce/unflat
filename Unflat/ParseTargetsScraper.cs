@@ -28,6 +28,7 @@ internal static class ParseTargetsScraper
 
         return syntaxNode switch
         {
+            RecordDeclarationSyntax => true,
             StructDeclarationSyntax => true,
             ClassDeclarationSyntax classDecl =>
                 !classDecl.Modifiers.Any(SyntaxKind.AbstractKeyword) &&
